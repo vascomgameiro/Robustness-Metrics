@@ -18,16 +18,16 @@ train_loader, val_loader, test_loader_tiny, test_loader_r = dataloader(path_tiny
 for config in models_to_train:
     model_name = f"{config['name']}_lr{config['params']['lr']}"
     trainer = PyTorchTrainer(
-        model=config["model"](pretrained=True),
+        model=config["model"](pretrained=True), #falta aqui criar uma função que altere alguma parte da estrutura
         train_loader=train_loader,
         val_loader=val_loader,
-        test_loader=test_loader_r, #por enquanto
+        # test_loader=test_loader_r, --por enquanto, o trainer ainda não pega no testset
         criterion=nn.CrossEntropyLoss(),
         optimizer=optim.Adam(config["model"](pretrained=True).parameters(), lr=config["params"]["lr"]),
     )
 
-    trainer.train(num_epochs=10, model_name=model_name, save_dir="project_root")
-    trainer.save_predictions(val_loader, f"project_root/results/{model_name}/val_predictions.csv", "val")
-    trainer.save_predictions(test_loader_r, f"project_root/results/{model_name}/test_predictions.csv", "test")
-    trainer.save_training_info(f"project_root/results/{model_name}/training_info.json")
-    trainer.save_plots(f"project_root/reports/figures/{model_name}_loss_accuracy.png")
+    trainer.train(num_epochs=1)
+    #trainer.save_predictions(val_loader, f"project_root/results/{model_name}/val_predictions.csv", "val")
+    #trainer.save_predictions(test_loader_r, f"project_root/results/{model_name}/test_predictions.csv", "test")
+    #trainer.save_training_info(f"project_root/results/{model_name}/training_info.json")
+    #trainer.save_plots(f"project_root/reports/figures/{model_name}_loss_accuracy.png")

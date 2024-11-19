@@ -4,18 +4,18 @@ import torch
 
 class PyTorchTrainer:
     def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cuda"):
-        self.model = model.to(device)
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.model = model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0  # To track the best validation accuracy
         self.best_model = None  # To store the best model
 
-    def train(self, num_epochs=10, early_stopping_patience=5):
+    def train(self, num_epochs=1, early_stopping_patience=5):
         print("Starting Training...\n")
         no_improvement_epochs = 0  # To track epochs with no improvement
         for epoch in range(num_epochs):
@@ -43,6 +43,7 @@ class PyTorchTrainer:
                 self.best_val_acc = val_acc
                 self.best_model = self.model.state_dict()  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
+                self.save_model() #depois definir aqui qual é o path onde queremos guardar!!
                 no_improvement_epochs = 0
             else:
                 no_improvement_epochs += 1
