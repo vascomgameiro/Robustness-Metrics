@@ -1,8 +1,11 @@
 
 import torchvision.models as models
+from model_mod import modify_last_layer
 from train import PyTorchTrainer
 from data_loader2 import dataloader
+import torch
 from torch import nn, optim
+
 #mesmo nome que no https://github.com/fra31/evaluating-adaptive-test-time-defenses/tree/master
 
 path_tiny = "/Users/clarapereira/Desktop/Uni/Ano_5/PIC/datasets/test/train.pt" #diretoria para o tensor
@@ -17,8 +20,9 @@ train_loader, val_loader, test_loader_tiny, test_loader_r = dataloader(path_tiny
 
 for config in models_to_train:
     model_name = f"{config['name']}_lr{config['params']['lr']}"
+    model=config["model"](pretrained=True)
     trainer = PyTorchTrainer(
-        model=config["model"](pretrained=True), #falta aqui criar uma função que altere alguma parte da estrutura
+        model = modify_last_layer(model, model_name, len(torch.unique(train_loader.dataset.labels))), #falta aqui criar uma função que altere alguma parte da estrutura
         train_loader=train_loader,
         val_loader=val_loader,
         # test_loader=test_loader_r, --por enquanto, o trainer ainda não pega no testset
