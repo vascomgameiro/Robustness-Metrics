@@ -1,2 +1,12 @@
 ipykernel
 python-dotenv
+numpy
+pandas
+matplotlib
+seaborn
+scipy
+torch
+torchvision
+scikit-learn
+pyarrow
+fastparquet
