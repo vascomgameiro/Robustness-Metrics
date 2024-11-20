@@ -1,8 +1,4 @@
-import random
-
-import numpy as np
 import torch
-from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -25,18 +21,7 @@ class TensorDataset(Dataset):
         return self.features[idx], self.labels[idx]
 
 
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-
-def load_datasets(path_tiny, path_r):
+def load_data(processed_path):
     """
     Load datasets from .pt files and split into train, val, test sets. Create
     DataLoaders for each set.
@@ -48,20 +33,16 @@ def load_datasets(path_tiny, path_r):
     Returns:
         tuple: A tuple of four DataLoaders (train, val, test_tiny, test_r)
     """
-    data_tiny = torch.load(path_tiny)
-    data_r = torch.load(path_r)
-
-    # Split tiny in train, val, test
-    train_x, test_tiny_x, train_y, test_tiny_y = train_test_split(
-        data_tiny[0], data_tiny[1], test_size=0.2, stratify=data_tiny[1]
-    )
-    train_x, val_x, train_y, val_y = train_test_split(train_x, train_y, test_size=0.1, stratify=train_y)
+    train_tiny_path = processed_path / "tiny_train.pt"
+    val_tiny_path = processed_path / "tiny_val.pt"
+    test_tiny_path = processed_path / "tiny_test.pt"
+    r_path = processed_path / "r.pt"
 
     # Create datasets
-    train_dataset = TensorDataset(train_x, train_y)
-    val_dataset = TensorDataset(val_x, val_y)
-    test_tiny = TensorDataset(test_tiny_x, test_tiny_y)
-    r_dataset = TensorDataset(data_r[0], data_r[1])
+    train_dataset = TensorDataset(*torch.load(train_tiny_path))
+    val_dataset = TensorDataset(*torch.load(val_tiny_path))
+    test_tiny = TensorDataset(*torch.load(test_tiny_path))
+    r_dataset = TensorDataset(*torch.load(r_path))
 
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)

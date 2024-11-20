@@ -1,23 +1,48 @@
+import os
+
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 
 
 class PyTorchTrainer:
     def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cuda"):
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.model = model.to(self.device)
+        """
+        Initialize a PyTorchTrainer object.
+
+        Parameters
+        ----------
+        model : torch.nn.Module
+            The PyTorch model to be trained.
+        train_loader : torch.utils.data.DataLoader
+            The DataLoader for the training set.
+        val_loader : torch.utils.data.DataLoader
+            The DataLoader for the validation set.
+        criterion : torch.nn.Module
+            The loss function to be used for training.
+        optimizer : torch.optim.Optimizer
+            The optimizer to be used for training.
+        scheduler : torch.optim.lr_scheduler, optional
+            The learning rate scheduler to be used for training. If None, no scheduler is used.
+        device : str, optional
+            The device to be used for training. If "cuda", training is done on the GPU and if "cpu", training is done on the CPU.
+        """
+
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.model = model.to(device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-        self.best_val_acc = 0.0  # To track the best validation accuracy
-        self.best_model = None  # To store the best model
+        self.best_val_acc = 0.0
+        self.best_model = None
 
-    def train(self, num_epochs=1, early_stopping_patience=5):
+    def train(self, num_epochs=10, early_stopping_patience=5):
         print("Starting Training...\n")
-        no_improvement_epochs = 0  # To track epochs with no improvement
+        no_improvement_epochs = 0
+
         for epoch in range(num_epochs):
             train_loss, train_acc = self._train_epoch()
             val_loss, val_acc = self._validate_epoch()
@@ -54,40 +79,27 @@ class PyTorchTrainer:
 
         print("Training Complete!")
 
-    def save_best_model(self, path="best_model.pt"):
-        if self.best_model is not None:
-            torch.save(self.best_model, path)
-            print(f"Best model saved to {path}")
-        else:
-            print("No model was saved because no improvement was detected.")
-
     def _train_epoch(self):
         self.model.train()
-        running_loss = 0.0
-        correct = 0
-        total = 0
+        running_loss, correct, total = 0.0, 0, 0
 
         for images, labels in self.train_loader:
             images, labels = images.to(self.device), labels.to(self.device)
 
-            # Forward pass
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
 
-            # Backward pass
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-            # Metrics
-            running_loss += loss.item()
+            batch_size = labels.size(0)
+            running_loss += loss.item() * batch_size
             _, predicted = outputs.max(1)
-            total += labels.size(0)
+            total += batch_size
             correct += predicted.eq(labels).sum().item()
 
-        epoch_loss = running_loss / len(self.train_loader)
-        epoch_acc = 100.0 * correct / total
-        return epoch_loss, epoch_acc
+        return running_loss / total, 100.0 * correct / total
 
     def _validate_epoch(self):
         self.model.eval()
@@ -113,13 +125,38 @@ class PyTorchTrainer:
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
 
+    def save_best_model(self, path="best_model.pt"):
+        if self.best_model is not None:
+            torch.save(self.best_model, path)
+            print(f"Best model saved to {path}")
+        else:
+            print("No model was saved because no improvement was detected.")
+
     def load_model(self, path="model.pt"):
         self.model.load_state_dict(torch.load(path))
         self.model = self.model.to(self.device)
         print(f"Model loaded from {path}")
 
-    def plot_history(self):
+    def predict(self, data_loader):
+        self.model.eval()
+        predictions = []
+        with torch.no_grad():
+            for images, _ in data_loader:
+                images = images.to(self.device)
+                outputs = self.model(images)
+                _, predicted = outputs.max(1)
+                predictions.extend(predicted.cpu().numpy())
+        return np.array(predictions)
+
+    def save_predictions(self, predictions, path="predictions.npy"):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        np.save(path, predictions)
+        print(f"Predictions saved to {path}")
+
+    def save_plots(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         epochs = range(1, len(self.history["train_loss"]) + 1)
+
         plt.figure(figsize=(12, 5))
 
         # Loss Plot
@@ -141,6 +178,6 @@ class PyTorchTrainer:
         plt.legend()
 
         plt.tight_layout()
-        plt.show()
-        plt.show()
-        plt.show()
+        plt.savefig(path)
+        print(f"Training plots saved to {path}")
+        plt.close()

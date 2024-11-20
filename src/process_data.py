@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 # Constants
@@ -65,8 +66,8 @@ def get_tiny_data(tiny_dir):
     tiny_labels = np.array(train_labels + val_labels)
     return tiny_images, tiny_labels
 
+
 def get_r_data(r_dir):
-    
     r_images, r_labels = [], []
 
     for class_dir in r_dir.iterdir():
@@ -119,8 +120,23 @@ def process_data(TINY_DIR, R_DIR, PROCESSED_DIR):
     r_tensor, r_labels_tensor = to_tensor(r_images, r_labels)
 
     torch.save((tiny_tensor, tiny_labels_tensor), PROCESSED_DIR / "tiny.pt")
-    print("Train data saved.")
+    print("Tiny Tensor Saved.")
     torch.save((r_tensor, r_labels_tensor), PROCESSED_DIR / "r.pt")
+    print("R Tensor Saved.")
+
+    train_tiny_tensor, test_tiny_tensor, train_tiny_lbs, test_tiny_lbs = train_test_split(
+        tiny_tensor, tiny_labels, test_size=0.2, stratify=tiny_labels, random_state=42
+    )
+    train_tiny_tensor, val_tiny_tensor, train_tiny_lbs, val_tiny_lbs = train_test_split(
+        train_tiny_tensor, train_tiny_lbs, test_size=0.1, stratify=train_tiny_lbs, random_state=42
+    )
+    torch.save((train_tiny_tensor, train_tiny_lbs), PROCESSED_DIR / "train_tiny.pt")
+    print("Train Tiny Tensor Saved.")
+    torch.save((val_tiny_tensor, val_tiny_lbs), PROCESSED_DIR / "val_tiny.pt")
+    print("Val Tiny Tensor Saved.")
+    torch.save((test_tiny_tensor, test_tiny_lbs), PROCESSED_DIR / "test_tiny.pt")
+    print("Val Tiny Tensor Saved.")
+
     print("Data processing complete and saved.")
 
 

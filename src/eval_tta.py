@@ -4,7 +4,7 @@ from torch import nn, optim
 
 from model_mod import modify_last_layer
 from src.data_loader import load_datasets
-from train import PyTorchTrainer
+from src.pytorch_trainer import PyTorchTrainer
 
 # mesmo nome que no https://github.com/fra31/evaluating-adaptive-test-time-defenses/tree/master
 
