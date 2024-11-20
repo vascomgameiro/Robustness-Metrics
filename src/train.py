@@ -43,7 +43,6 @@ class PyTorchTrainer:
                 self.best_val_acc = val_acc
                 self.best_model = self.model.state_dict()  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
-                self.save_model() #depois definir aqui qual é o path onde queremos guardar!!
                 no_improvement_epochs = 0
             else:
                 no_improvement_epochs += 1
@@ -113,10 +112,6 @@ class PyTorchTrainer:
         epoch_loss = running_loss / len(self.val_loader)
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
-
-    def save_model(self, path="model.pt"):
-        torch.save(self.model.state_dict(), path)
-        print(f"Model saved to {path}")
 
     def load_model(self, path="model.pt"):
         self.model.load_state_dict(torch.load(path))
