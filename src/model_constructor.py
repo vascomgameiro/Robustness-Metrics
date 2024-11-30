@@ -6,17 +6,16 @@ import itertools
 
 class CNN(nn.Module):
     """
-    Constructor receives: list of layer objects. layer object can be conv layer (+relu + maxpooling) or fc layer 
-    choices: for conv layer : nr of filters, maxpooling and batch norm 
-             for fc layer : nr of parameters, activation functions, dropout prob
+    Constructor receives: layer objects and num_classes. can be conv layer or fc layer. 
+    Each is defined below and has multiple options for architecture.
     """
 
     def __init__(self, conv_layers, fc_layers, num_classes):
         
         super(CNN, self).__init__()
 
-        self.conv_layers = conv_layers
-        self.fc_layers = fc_layers
+        self.conv_layers = nn.ModuleList(conv_layers.layers)
+        self.fc_layers = nn.ModuleList(fc_layers.layers)
         self.num_classes = num_classes
         self.name = conv_layers.name + fc_layers.name
                 
@@ -43,7 +42,7 @@ class Conv():
         """
         nr_conv -> nr of convolution layers
         nr_filters -> list with filters for each layer
-        maxpool, batchnorm -> bools
+        maxpool_batchnorm -> if true, both batch normalization and maxpooling are exacuted after each convolution
         """
         self.name = f"conv{nr_conv}{maxpool_batchnorm}"
         self.layers = nn.ModuleList()
@@ -52,6 +51,7 @@ class Conv():
         channels = 3 #rgb
 
         for i in range(nr_conv):
+            #convolution does not alter dimensions
             conv_layer = nn.Conv2d(in_channels= channels, out_channels=nr_filters[i], kernel_size=(3,3), stride=1, padding='same')
 
             channels = nr_filters[i]
@@ -68,7 +68,7 @@ class Conv():
             if maxpool_batchnorm:
                 maxpool_layer = nn.MaxPool2d(kernel_size=(2,2), stride=2)
                 self.layers.append(maxpool_layer)
-                input_size /= 2
+                input_size /= 2 #maxpooling halves dimensions
         
         self.finaldim = int(input_size*input_size*channels)
 
@@ -86,7 +86,7 @@ class FC():
 
         for i in range(nr_fc):
 
-            out_features = fc_size[i] #fc_size must always end w/ 62
+            out_features = fc_size[i] #fc_size must always end w/ 62 (nr of classes)
 
             #fc layer
             fc_layer = nn.Linear(in_features=in_features, out_features=out_features)
@@ -143,4 +143,25 @@ def models_iterator(nr_conv, filters, maxpool_batchnorm, nr_fconnected, fc_sizes
 
     return models_to_train
 
-            
+
+filters = [8, 16, 32, 64]
+maxpool_batchnorm = ["False", "True"]
+fc_sizes = [320, 160, 80, 62]
+lr = 0.01
+act_funs = ['ReLU'] * 3
+drops =[ [0.5, 0.2, 0.2], [0]*3]
+
+
+models_to_train = models_iterator(4, filters, maxpool_batchnorm, 5, fc_sizes, act_funs, drops, lr)
+
+decent_conv = Conv(3, [16, 32, 64])
+decent_fc = FC(3, [300, 150, 62], ['ReLU']* 2, dropouts= [0.5, 0.2])
+decent_model = CNN(decent_conv, decent_fc, 62)
+
+
+print(f"list of {len(models_to_train)} models generated!!")
+print(models_to_train)
+
+# possible optimizers: {SGD, ADAM, RMSprop}
+#atenção a early stopping: nas primeiras epochs não faz sentido
+#some pretrained models: {MobileNetV2, ResNet50, EfficientNet}

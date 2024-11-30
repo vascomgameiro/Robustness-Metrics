@@ -6,7 +6,7 @@ import torch
 
 
 class PyTorchTrainer:
-    def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cuda"):
+    def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cpu"):
         """
         Initialize a PyTorchTrainer object.
 
@@ -27,13 +27,13 @@ class PyTorchTrainer:
         device : str, optional
             The device to be used for training. If "cuda", training is done on the GPU and if "cpu", training is done on the CPU.
         """
-
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
         self.model = model.to(device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0
