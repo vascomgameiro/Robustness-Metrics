@@ -4,7 +4,7 @@ from sklearn.metrics import auc, precision_recall_curve, roc_auc_score
 
 # Source: https://github.com/Shifts-Project/shifts
 
-
+#auxiloar metrica
 def calc_uncertainty_rejection_curve(
     errors: np.ndarray, uncertainty: np.ndarray, group_by_uncertainty: bool = True
 ) -> np.ndarray:
@@ -174,3 +174,56 @@ def _calc_fbeta_rejection_curve(
 # F1 AUC ROC ACC
 
 # func (logits, labels) -> dicts
+
+def calculate_metrics_from_logits(logits, labels, uncertainty, threshold=0.5, beta=1.0, ood_mode="ROC"):
+    """
+    Calculate robustness and uncertainty metrics using provided implementations.
+    Args:
+        logits (np.ndarray): Logits or predicted outputs (shape: [n_samples, n_classes]).
+        labels (np.ndarray): Ground truth labels (shape: [n_samples]).
+        uncertainty (np.ndarray): Uncertainty values (shape: [n_samples]).
+        threshold (float): Error threshold for F-beta metrics (default: 0.5).
+        beta (float): Beta value for F-beta metrics (default: 1.0).
+        ood_mode (str): Mode for OOD detection ("ROC" or "PR").
+    Returns:
+        dict: Dictionary of calculated metrics.
+    """
+    probs = np.exp(logits) / np.sum(np.exp(logits), axis=1, keepdims=True)  # Convert logits to probabilities
+
+    preds = np.argmax(probs, axis=1) # Predicted classes and errors
+    errors = (labels != preds).astype(float)
+    
+    #Uncertainty Rejection Curve metrics , F_beta, OOD detection
+    rejection_ratio, uncertainty_rejection_auc = calc_aucs(errors, uncertainty)
+    f_auc, f95, f_scores = f_beta_metrics(errors, uncertainty, threshold, beta)
+    domain_labels = np.concatenate((np.zeros_like(uncertainty), np.ones_like(uncertainty))) #for OOD
+    ood_auc = ood_detect(domain_labels, uncertainty, uncertainty, mode=ood_mode)
+
+
+    return {
+        "Rejection Ratio": rejection_ratio,
+        "Uncertainty Rejection AUC": uncertainty_rejection_auc,
+        "F-Beta AUC": f_auc,
+        "F-Beta at 95%": f95,
+        "OOD AUC": ood_auc,
+    }
+
+
+#SE NÃO TIVERMOS LOGITS ISTO É SUPOSTO CALCULAR PRIMEIRO MAS EU DIRIA QUE NAO VAMOS USAR ATE PQ O NOSSO MODELO DA OUTPUT THE PREDICTIONS LOGO COM SOFTMAX
+#def get_logits_and_uncertainty(model, inputs):
+    """
+     Returns:
+        logits: Raw model outputs before softmax.
+        uncertainty: Uncertainty values derived from the model's predictions.
+    """
+    # Assuming model directly outputs logits
+    logits = model(inputs)
+    probs = np.exp(logits) / np.sum(np.exp(logits), axis=1, keepdims=True)
+    uncertainty = -np.sum(probs * np.log(probs + 1e-10), axis=1)  # Example: entropy as uncertainty
+    return logits, uncertainty
+
+#def calculate_metrics_from_model(model, inputs, labels, threshold=0.5, beta=1.0, ood_mode="ROC"):
+    logits, uncertainty = get_logits_and_uncertainty(model, inputs)
+    return calculate_metrics_from_logits(logits, labels, uncertainty, threshold, beta, ood_mode)
+
+
