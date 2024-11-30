@@ -1,5 +1,6 @@
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
 
 
 class TensorDataset(Dataset):
@@ -21,28 +22,24 @@ class TensorDataset(Dataset):
         return self.features[idx], self.labels[idx]
 
 
-def load_data(processed_path):
-    """
-    Load datasets from .pt files and split into train, val, test sets. Create
-    DataLoaders for each set.
+def dataloader(path_tiny, path_r):
+    # Load datasets
+    data_tiny = torch.load(path_tiny)
+    data_r = torch.load(path_r)
 
-    Parameters:
-        path_tiny (str): Path to the .pt file containing preprocessed tiny-imagenet data.
-        path_r (str): Path to the .pt file containing preprocessed imagenet-r data.
-
-    Returns:
-        tuple: A tuple of four DataLoaders (train, val, test_tiny, test_r)
-    """
-    train_tiny_path = processed_path / "tiny_train.pt"
-    val_tiny_path = processed_path / "tiny_val.pt"
-    test_tiny_path = processed_path / "tiny_test.pt"
-    r_path = processed_path / "r.pt"
+    # Split tiny in train, val, test
+    train_x, test_tiny_x, train_y, test_tiny_y = train_test_split(
+        data_tiny[0], data_tiny[1], test_size=0.2, stratify=data_tiny[1], random_state=42
+    )
+    train_x, val_x, train_y, val_y = train_test_split(
+        train_x, train_y, test_size=0.1, stratify=train_y, random_state=42
+    )
 
     # Create datasets
-    train_dataset = TensorDataset(*torch.load(train_tiny_path))
-    val_dataset = TensorDataset(*torch.load(val_tiny_path))
-    test_tiny = TensorDataset(*torch.load(test_tiny_path))
-    r_dataset = TensorDataset(*torch.load(r_path))
+    train_dataset = TensorDataset(train_x, train_y)
+    val_dataset = TensorDataset(val_x, val_y)
+    test_tiny = TensorDataset(test_tiny_x, test_tiny_y)
+    r_dataset = TensorDataset(data_r[0], data_r[1])
 
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -50,4 +47,4 @@ def load_data(processed_path):
     test_loader_tiny = DataLoader(test_tiny, batch_size=32, shuffle=False)
     test_loader_r = DataLoader(r_dataset, batch_size=32, shuffle=False)
 
-    return train_loader, val_loader, test_loader_tiny, test_loader_r
+    return train_loader, val_loader, test_loader_tiny, test_loader_r, test_tiny
