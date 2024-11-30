@@ -1,166 +1,276 @@
 import copy
 import math
-
+import numpy as np
 import torch
 
 # Source: https://github.com/bneyshabur/generalization-bounds
 
 
-# This function reparametrizes the networks with batch normalization in a way that it calculates the same function as the
-# original network but without batch normalization. Instead of removing batch norm completely, we set the bias and mean
-# to zero, and scaling and variance to one
-# Warning: This function only works for convolutional and fully connected networks. It also assumes that
-# module.children() returns the children of a module in the forward pass order. Recurssive construction is allowed.
-def reparam(model, prev_layer=None):
+# Reparametrization
+
+
+def reparametrize_model(model):
+    """
+    Reparametrize the model by adjusting BatchNorm parameters and updating
+    weights and biases of preceding layers.
+
+    Args:
+        model (nn.Module): The PyTorch model to reparametrize.
+
+    Returns:
+        nn.Module: The reparametrized model.
+    """
+    # Recursively iterate over children modules
+    previous_layer = None
     for child in model.children():
-        module_name = child._get_name()
-        prev_layer = reparam(child, prev_layer)
-        if module_name in ["Linear", "Conv1d", "Conv2d", "Conv3d"]:
-            prev_layer = child
-        elif module_name in ["BatchNorm2d", "BatchNorm1d"]:
-            with torch.no_grad():
-                scale = child.weight / ((child.running_var + child.eps).sqrt())
-                prev_layer.bias.copy_(child.bias + (scale * (prev_layer.bias - child.running_mean)))
-                perm = list(reversed(range(prev_layer.weight.dim())))
-                prev_layer.weight.copy_((prev_layer.weight.permute(perm) * scale).permute(perm))
-                child.bias.fill_(0)
-                child.weight.fill_(1)
-                child.running_mean.fill_(0)
-                child.running_var.fill_(1)
-    return prev_layer
+        module_name = child.__class__.__name__
+
+        # Recursively reparametrize child layers
+        previous_layer = reparametrize_model(child)
+
+        # Track previous layers for Linear/Conv layers
+        if module_name in {"Linear", "Conv1d", "Conv2d", "Conv3d"}:
+            previous_layer = child
+
+        # Handle BatchNorm layers and update parameters
+        elif module_name in {"BatchNorm1d", "BatchNorm2d"}:
+            if previous_layer is None:
+                raise ValueError(f"BatchNorm layer {child} must follow a Linear or Conv layer.")
+            _update_batchnorm_parameters(batchnorm_layer=child, preceding_layer=previous_layer)
+
+    return previous_layer
 
 
-# This function calculates a measure on the given model
-# measure_func is a function that returns a value for a given linear or convolutional layer
-# calc_measure calculates the values on individual layers and then calculate the final value based on the given operator
-def calc_measure(model, init_model, measure_func, operator, kwargs={}, p=1):
-    measure_val = 0
+def calculate_margin(model, device, val_loader):
+    """
+    Calculate the margin for a model on a validation dataset.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model to evaluate.
+        device (torch.device): Device (CPU or GPU) for computation.
+        val_loader (torch.utils.data.DataLoader): Validation data loader.
+
+    Returns:
+        float: The 5th percentile of margins.
+    """
+    margins = []
+    model.eval()
+
+    with torch.no_grad():
+        for data, target in val_loader:
+            data, target = data.to(device), target.to(device)
+
+            output = model(data)
+            correct_logits = output[torch.arange(len(target)), target]
+            max_other_logits, _ = output.masked_fill(
+                torch.nn.functional.one_hot(target, output.size(1)).bool(), float("-inf")
+            ).max(dim=1)
+
+            margins.extend((correct_logits - max_other_logits).tolist())
+
+    val_margin = np.percentile(margins, 5)
+    return val_margin
+
+
+def _update_batchnorm_parameters(batchnorm_layer, preceding_layer):
+    """
+    Update the BatchNorm layer parameters and adjust weights/biases of the preceding layer.
+
+    Args:
+        batchnorm_layer (nn.Module): The BatchNorm layer to update.
+        preceding_layer (nn.Module): The preceding Linear or Conv layer.
+    """
+    with torch.no_grad():
+        # Compute scaling factors for weights
+        scale = batchnorm_layer.weight / (batchnorm_layer.running_var + batchnorm_layer.eps).sqrt()
+
+        # Update biases in the preceding layer
+        preceding_layer.bias.copy_(batchnorm_layer.bias + scale * (preceding_layer.bias - batchnorm_layer.running_mean))
+
+        # Update weights in the preceding layer
+        perm = list(reversed(range(preceding_layer.weight.dim())))
+        preceding_layer.weight.copy_((preceding_layer.weight.permute(perm) * scale).permute(perm))
+
+        # Reset the BatchNorm layer parameters
+        _reset_batchnorm_parameters(batchnorm_layer)
+
+
+def _reset_batchnorm_parameters(batchnorm_layer):
+    """
+    Reset BatchNorm layer parameters to default values.
+
+    Args:
+        batchnorm_layer (nn.Module): The BatchNorm layer to reset.
+    """
+    with torch.no_grad():
+        batchnorm_layer.bias.zero_()
+        batchnorm_layer.weight.fill_(1)
+        batchnorm_layer.running_mean.zero_()
+        batchnorm_layer.running_var.fill_(1)
+
+
+# Measure Calculation
+def calculate_measure(model, init_model, measure_func, operator, kwargs=None, p=1.0):
+    """
+    Recursively calculates measures based on the specified operator ('product', 'norm', etc.)
+    across model layers.
+    """
+    kwargs = kwargs or {}
     if operator == "product":
-        measure_val = math.exp(calc_measure(model, init_model, measure_func, "log_product", kwargs, p))
+        return math.exp(calculate_measure(model, init_model, measure_func, "log_product", kwargs, p))
     elif operator == "norm":
-        measure_val = (calc_measure(model, init_model, measure_func, "sum", kwargs, p=p)) ** (1 / p)
-    else:
-        measure_val = 0
-        for child, init_child in zip(model.children(), init_model.children()):
-            module_name = child._get_name()
-            if module_name in ["Linear", "Conv1d", "Conv2d", "Conv3d"]:
-                if operator == "log_product":
-                    measure_val += math.log(measure_func(child, init_child, **kwargs))
-                elif operator == "sum":
-                    measure_val += (measure_func(child, init_child, **kwargs)) ** p
-                elif operator == "max":
-                    measure_val = max(measure_val, measure_func(child, init_child, **kwargs))
-            else:
-                measure_val += calc_measure(child, init_child, measure_func, operator, kwargs, p=p)
-    return measure_val
+        return calculate_measure(model, init_model, measure_func, "sum", kwargs, p) ** (1 / p)
+
+    measure_value = 0
+    for child, init_child in zip(model.children(), init_model.children()):
+        module_name = child._get_name()
+        if module_name in ["Linear", "Conv1d", "Conv2d", "Conv3d"]:
+            if operator == "log_product":
+                measure_value += math.log(measure_func(child, init_child, **kwargs))
+            elif operator == "sum":
+                measure_value += measure_func(child, init_child, **kwargs) ** p
+            elif operator == "max":
+                measure_value = max(measure_value, measure_func(child, init_child, **kwargs))
+        else:
+            measure_value += calculate_measure(child, init_child, measure_func, operator, kwargs, p)
+    return measure_value
 
 
-# calculates l_pq norm of the parameter matrix of a layer:
-# 1) l_p norm of incomming weights to each hidden unit and l_q norm on the hidden units
-# 2) convolutional tensors are reshaped in a way that all dimensions except the output are together
-def norm(module, init_module, p=2, q=2):
+# Utility Functions
+def calculate_norm(module, p=2.0, q=2.0):
+    """Calculates the specified norm of a module's weight."""
     return module.weight.view(module.weight.size(0), -1).norm(p=p, dim=1).norm(q).item()
 
 
-# calculates l_p norm of eigen values of a layer
-# convolutional tensors are reshaped in a way that all dimensions except the output are together
-def op_norm(module, init_module, p=float("Inf")):
-    _, S, _ = module.weight.view(module.weight.size(0), -1).svd()
-    return S.norm(p).item()
+def calculate_operator_norm(module, p=float("Inf")):
+    """Calculates the operator norm of a module's weight."""
+    _, singular_values, _ = module.weight.view(module.weight.size(0), -1).svd()
+    return singular_values.norm(p).item()
 
 
-# calculates l_pq distance of the parameter matrix of a layer from the random initialization:
-# 1) l_p norm of incomming weights to each hidden unit and l_q norm on the hidden units
-# 2) convolutional tensors are reshaped in a way that all dimensions except the output are together
-def dist(module, init_module, p=2, q=2):
+def calculate_distance(module, init_module, p=2, q=2):
+    """Calculates the distance between a module's current and initial weights."""
     return (module.weight - init_module.weight).view(module.weight.size(0), -1).norm(p=p, dim=1).norm(q).item()
 
 
-# calculates l_pq distance of the parameter matrix of a layer from the random initialization with an extra factor that
-# depends on the number of hidden units
-def h_dist(module, init_module, p=2, q=2):
-    return (n_hidden(module, init_module) ** (1 - 1 / q)) * dist(module, init_module, p=p, q=q)
+def calculate_hidden_distance(module, init_module, p=2, q=2):
+    """Calculates the hidden-layer-weighted distance."""
+    return (get_hidden_units(module) ** (1 - 1 / q)) * calculate_distance(module, init_module, p, q)
 
 
-# ratio of the h_dist to the operator norm
-def h_dist_op_norm(module, init_module, p=2, q=2, p_op=float("Inf")):
-    return h_dist(module, init_module, p=p, q=q) / op_norm(module, init_module, p=p_op)
+def calculate_hidden_operator_norm(module, init_module, p=2, q=2, p_op=float("Inf")):
+    """Calculates the hidden-layer-weighted operator norm."""
+    return calculate_hidden_distance(module, init_module, p, q) / calculate_operator_norm(module, p_op)
 
 
-# number of hidden units
-def n_hidden(module, init_module):
+def get_hidden_units(module):
+    """Returns the number of hidden units in a module."""
     return module.weight.size(0)
 
 
-# depth --> always 1 for any linear of convolutional layer
-def depth(module, init_module):
-    return 1
+def get_num_parameters(module):
+    """Calculates the number of parameters in a module."""
+    bias_param = 0 if module.bias is None else module.bias.size(0)
+    return bias_param + module.weight.size(0) * module.weight.view(module.weight.size(0), -1).size(1)
 
 
-# number of parameters
-def n_param(module, init_module):
-    bparam = 0 if module.bias is None else module.bias.size(0)
-    return bparam + module.weight.size(0) * module.weight.view(module.weight.size(0), -1).size(1)
-
-
-# This function calculates path-norm introduced in Neyshabur et al. 2015
-def lp_path_norm(model, device, p=2, input_size=[3, 32, 32]):
-    tmp_model = copy.deepcopy(model)
-    tmp_model.eval()
+def calculate_path_norm(model, device, p=2.0, input_size=(3, 32, 32)):
+    """Calculates the Lp path norm of the model."""
+    tmp_model = copy.deepcopy(model).eval()
     for param in tmp_model.parameters():
         if param.requires_grad:
             param.abs_().pow_(p)
-    data_ones = torch.ones(input_size).to(device)
-    return (tmp_model(data_ones).sum() ** (1 / p)).item()
+    data_ones = torch.ones((1, *input_size)).to(device)
+    return tmp_model(data_ones).sum().item() ** (1 / p)
 
 
-# This function calculates various measures on the given model and returns two dictionaries:
-# 1) measures: different norm based measures on the model
-# 2) bounds: different generalization bounds on the model
-def calculate(trained_model, init_model, device, train_loader, margin, nchannels, nclasses, img_dim):
+# Main Calculation
+def calculate_generalization_bounds(trained_model, init_model, train_loader, margin, nchannels, img_dim, device="cpu"):
+    """
+    Calculates various generalization bounds and measures for a model.
+    """
     model = copy.deepcopy(trained_model)
-    reparam(model)
-    reparam(init_model)
+    init_model = copy.deepcopy(init_model)
 
-    # size of the training set
-    m = len(train_loader.dataset)
+    model = reparametrize_model(model)
+    init_model = reparametrize_model(init_model)
 
-    # depth
-    d = calc_measure(model, init_model, depth, "sum", {})
+    num_samples = len(train_loader.dataset)
+    depth = calculate_measure(model, init_model, measure_func=get_hidden_units, operator="sum")
+    num_parameters = calculate_measure(model, init_model, measure_func=get_num_parameters, operator="sum")
 
-    # number of parameters (not including batch norm)
-    nparam = calc_measure(model, init_model, n_param, "sum", {})
-
-    measure, bound = {}, {}
+    measures, bounds = {}, {}
     with torch.no_grad():
-        measure["L_{1,inf} norm"] = (
-            calc_measure(model, init_model, norm, "product", {"p": 1, "q": float("Inf")}) / margin
+        # Norm-based Measures
+        norm_settings = {"model": model, "init_model": init_model, "measure": calculate_norm, "operator": "product"}
+
+        measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf}) / margin
+        measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2}) / margin
+        measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5}) / margin
+
+        opperator_settings = {
+            "model": model,
+            "init_model": init_model,
+            "measure": calculate_operator_norm,
+            "operator": "product",
+        }
+
+        measures["Spectral norm"] = calculate_measure(**opperator_settings, kwargs={"p": float("Inf")}) / margin
+        measures["L_1.5 operator norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1.5}) / margin
+        measures["Trace norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1}) / margin
+
+        # Enhanced Norm Metrics
+        log_product_settings = {
+            "model": model,
+            "init_model": init_model,
+            "operator": "log_product",
+        }
+        measures["Log Product of Spectral Norms"] = (
+            calculate_measure(measure_func=calculate_operator_norm, **log_product_settings, kwargs={"p": float("Inf")})
+            / margin
         )
-        measure["Frobenious norm"] = calc_measure(model, init_model, norm, "product", {"p": 2, "q": 2}) / margin
-        measure["L_{3,1.5} norm"] = calc_measure(model, init_model, norm, "product", {"p": 3, "q": 1.5}) / margin
-        measure["Spectral norm"] = calc_measure(model, init_model, op_norm, "product", {"p": float("Inf")}) / margin
-        measure["L_1.5 operator norm"] = calc_measure(model, init_model, op_norm, "product", {"p": 1.5}) / margin
-        measure["Trace norm"] = calc_measure(model, init_model, op_norm, "product", {"p": 1}) / margin
-        measure["L1_path norm"] = lp_path_norm(model, device, p=1, input_size=[1, nchannels, img_dim, img_dim]) / margin
-        measure["L1.5_path norm"] = (
-            lp_path_norm(model, device, p=1.5, input_size=[1, nchannels, img_dim, img_dim]) / margin
+        measures["Log Product of Frobenius Norms"] = (
+            calculate_measure(measure_func=calculate_norm, **log_product_settings, kwargs={"p": 2, "q": 2}) / margin
         )
-        measure["L2_path norm"] = lp_path_norm(model, device, p=2, input_size=[1, nchannels, img_dim, img_dim]) / margin
+        measures["Frobenius over Spectral Norm"] = measures["Frobenius norm"] / measures["Spectral norm"]
 
-        # Generalization bounds: constants and additive logarithmic factors are not included
+        # Distance Metrics
+        distance_settings = {
+            "model": model,
+            "init_model": init_model,
+            "measure": calculate_distance,
+            "operator": "sum",
+        }
+        measures["Frobenius Distance"] = calculate_measure(**distance_settings, kwargs={"p": 2, "q": 2}) / margin
+        measures["Spectral Distance"] = calculate_measure(**distance_settings, kwargs={"p": float("Inf")}) / margin
 
-        # This value of alpha is based on the improved depth dependency by Golowith et al. 2018
-        alpha = math.sqrt(d + math.log(nchannels * img_dim * img_dim))
+        # Path Norms
+        input_size = (nchannels, img_dim, img_dim)
+        measures["L1_path norm"] = calculate_path_norm(model, device, p=1, input_size=input_size) / margin
+        measures["L1.5_path norm"] = calculate_path_norm(model, device, p=1.5, input_size=input_size) / margin
+        measures["L2_path norm"] = calculate_path_norm(model, device, p=2, input_size=input_size) / margin
 
-        bound["L1_max Bound (Bartlett and Mendelson 2002)"] = alpha * measure["L_{1,inf} norm"] / math.sqrt(m)
-        bound["Frobenious Bound (Neyshabur et al. 2015)"] = alpha * measure["Frobenious norm"] / math.sqrt(m)
-        bound["L_{3,1.5} Bound (Neyshabur et al. 2015)"] = alpha * measure["L_{3,1.5} norm"] / (m ** (1 / 3))
+        # Bound Calculations
+        alpha = math.sqrt(depth + math.log(nchannels * img_dim**2))
+        bounds["L1_max Bound"] = alpha * measures["L_{1,inf} norm"] / math.sqrt(num_samples)
+        bounds["Frobenius Bound"] = alpha * measures["Frobenius norm"] / math.sqrt(num_samples)
+        bounds["L_{3,1.5} Bound"] = alpha * measures["L_{3,1.5} norm"] / (num_samples ** (1 / 3))
 
-        beta = math.log(m) * math.log(nparam)
-        ratio = calc_measure(model, init_model, h_dist_op_norm, "norm", {"p": 2, "q": 1, "p_op": float("Inf")}, p=2 / 3)
-        bound["Spec_L_{2,1} Bound (Bartlett et al. 2017)"] = beta * measure["Spectral norm"] * ratio / math.sqrt(m)
+        # Enhanced Bounds
+        beta = math.log(num_samples) * math.log(num_parameters)
+        ratio_settings = {
+            "model": model,
+            "init_model": init_model,
+            "measure": calculate_hidden_operator_norm,
+            "operator": "norm",
+        }
+        ratio = calculate_measure(**ratio_settings, p=2 / 3, kwargs={"p": 2, "q": 1, "p_op": np.inf})
+        bounds["Spec_L2_1 Bound"] = beta * measures["Spectral norm"] * ratio / math.sqrt(num_samples)
+        ratio = calculate_measure(**ratio_settings, kwargs={"p": 2, "q": 2, "p_op": np.inf}, p=2)
+        bounds["Spec_Fro Bound"] = beta * measures["Spectral norm"] * ratio / math.sqrt(num_parameters)
 
-        ratio = calc_measure(model, init_model, h_dist_op_norm, "norm", {"p": 2, "q": 2, "p_op": float("Inf")}, p=2)
-        bound["Spec_Fro Bound (Neyshabur et al. 2018)"] = d * measure["Spectral norm"] * ratio / math.sqrt(m)
+        # Flatness-Based Bounds
+        sigma = calculate_path_norm(model, device, p=2, input_size=input_size)
+        bounds["Flatness"] = 1 / (sigma**2)
 
-    return measure, bound
+    return measures, bounds
