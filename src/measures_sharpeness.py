@@ -7,6 +7,12 @@ import math
 import numpy as np
 from torch.utils.data import DataLoader
 
+# sources:
+# https://github.com/facebookresearch/decodable_information_bottleneck
+# https://drive.google.com/file/d/1_6oUG94d0C3x7x2Vd935a2QqY-OaAWAM/view
+# https://github.com/nitarshan/robust-generalization-measures
+# Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
+
 
 @contextmanager
 def apply_perturbation(

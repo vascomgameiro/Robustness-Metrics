@@ -23,6 +23,9 @@ class TensorDataset(Dataset):
 
 
 def dataloader(path_tiny, path_r):
+    """
+    Load and split the Tiny ImageNet and ImageNet-R datasets.
+    """
     # Load datasets
     data_tiny = torch.load(path_tiny)
     data_r = torch.load(path_r)
