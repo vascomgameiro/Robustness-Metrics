@@ -3,9 +3,8 @@ import torchvision.models as models
 from torch import nn, optim
 
 from model_mod import modify_last_layer, SimpleCNN
-from data_loader import load_data
+from data_loader import dataloader
 from pytorch_trainer import PyTorchTrainer
-import torchattacks
 from adversarial_attacks import (
     fgsm_attack,
     pgd_attack,
@@ -22,10 +21,10 @@ val_tiny_path = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data/proces
 test_tiny_path = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data/processed/test_tiny.pt"
 r_path = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data/processed/test_R.pt"
 
-
-train_loader, val_loader, test_loader_tiny, test_loader_r = load_data(
-    train_tiny_path, val_tiny_path, test_tiny_path, r_path
-)
+#this really is not needed
+#train_loader, val_loader, test_loader_tiny, test_loader_r = dataloader(
+#    train_tiny_path, val_tiny_path, test_tiny_path, r_path
+#)
 
 models_to_train = [
     {"name": "simple_cnn", "model": SimpleCNN, "params": {"lr": 0.001}}
@@ -56,6 +55,7 @@ def generate_and_save_attack(model, test_loader, attack_fn, attack_name, params,
     model.eval()
     all_adv_images = []
     all_labels = []
+    os.makedirs(save_dir, exist_ok=True)
 
     print(f"Generating adversarial examples for {model_name} using {attack_name}...")
 
@@ -88,11 +88,11 @@ def evaluate_and_save_all_attacks(
 
     for model_config in models_to_train:
         model_name = model_config["name"]
-        model_class = model_config["model"]
-        model_params = model_config["params"]
+        model = model_config["model"]
+        #model_params = model_config["params"]
 
         # Instantiate the model
-        model = model_class()
+        #model = model_class()
 
         # Train or load pre-trained weights (adjust path as necessary)
         model_path = f"models/{model_name}/{model_name}.pt"
@@ -119,8 +119,9 @@ def evaluate_and_save_all_attacks(
 
             # Load Saved Adversarial
             adv_images_path = (
-                f"{attacks_dir}{model_name}_{attack_name}_{'_'.join(f'{k}_{v}' for k, v in params.items())}.pt"
+                f"{attacks_dir}/{model_name}_{attack_name}_{'_'.join(f'{k}_{v}' for k, v in params.items())}.pt"
             )
+            print(adv_images_path)
             if os.path.exists(adv_images_path):
                 saved_data = torch.load(adv_images_path)  # Load the saved .pt file
                 adv_images = saved_data["adv_images"]  # Extract adversarial images

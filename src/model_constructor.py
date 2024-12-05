@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import itertools
+
 
 
 class CNN(nn.Module):
@@ -10,14 +10,16 @@ class CNN(nn.Module):
     Each is defined below and has multiple options for architecture.
     """
 
-    def __init__(self, conv_layers, fc_layers, num_classes):
+    def __init__(self, conv_layers, fc_layers, num_classes, lr):
         
         super(CNN, self).__init__()
 
         self.conv_layers = nn.ModuleList(conv_layers.layers)
         self.fc_layers = nn.ModuleList(fc_layers.layers)
         self.num_classes = num_classes
-        self.name = conv_layers.name + fc_layers.name
+        self.lr = lr
+        safe_lr = str(lr).replace(".", "")
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}" 
                 
     def forward(self, input): #input will be of form (Batch size, 3, 64, 64)
         
@@ -103,65 +105,5 @@ class FC():
                 #dropout prob
                 if dropouts[i] > 0:
                     self.layers.append(nn.Dropout(dropouts[i]))
-
-                self.name += f"{act_funs[i]}{dropouts[i]}"
-
-
-
-
-def models_iterator(nr_conv, filters, maxpool_batchnorm, nr_fconnected, fc_sizes, act_funs, drops, lr):
-    models_to_train = []
-    configurations = list(itertools.product(maxpool_batchnorm, drops))
-    for nr_c in range(nr_conv):
-        for nr_fc in range(1, nr_fconnected):
-            for config in configurations:
-
-                maxpool_batchnorm, drops = config
-
-                if not(nr_fc == 1 and drops == [0]*3): #avoid making 2 copied models in the case where there is only 1 layer: both "drops" options will be the same [] !! 
-                    nr_filters = filters[:nr_c]
-
-                    conv_layers = Conv(nr_conv=nr_c, nr_filters=nr_filters, maxpool_batchnorm=maxpool_batchnorm)
-
-                    fc_size=fc_sizes[4-nr_fc:] #want to slice from the end
-                    act_fun=act_funs[:nr_fc-1]
-                    dropouts = drops[4-nr_fc:] #want to slice from the end
-                    
-                    fc_layers = FC(nr_fc=nr_fc, fc_size=fc_size, act_funs=act_fun, dropouts=dropouts, in_features=conv_layers.finaldim)
-                    
-                    # Create the model using the CNN constructor
-                    model = CNN(conv_layers=conv_layers, fc_layers=fc_layers, num_classes=62)  # Assuming 62 classes as an example
-                    
-                    # Store the model and its parameters in the list
-                    model_info = {
-                        "name": f"{model.name}", 
-                        "model": model,
-                        "params": {"lr": lr}
-                    }
-                    
-                    models_to_train.append(model_info)
-
-    return models_to_train
-
-
-filters = [8, 16, 32, 64]
-maxpool_batchnorm = ["False", "True"]
-fc_sizes = [320, 160, 80, 62]
-lr = 0.01
-act_funs = ['ReLU'] * 3
-drops =[ [0.5, 0.2, 0.2], [0]*3]
-
-
-models_to_train = models_iterator(4, filters, maxpool_batchnorm, 5, fc_sizes, act_funs, drops, lr)
-
-decent_conv = Conv(3, [16, 32, 64])
-decent_fc = FC(3, [300, 150, 62], ['ReLU']* 2, dropouts= [0.5, 0.2])
-decent_model = CNN(decent_conv, decent_fc, 62)
-
-
-print(f"list of {len(models_to_train)} models generated!!")
-print(models_to_train)
-
-# possible optimizers: {SGD, ADAM, RMSprop}
-#atenção a early stopping: nas primeiras epochs não faz sentido
-#some pretrained models: {MobileNetV2, ResNet50, EfficientNet}
+                safe_dropout = str(dropouts[i]).replace(".", "")
+                self.name += f"{act_funs[i]}{safe_dropout}"
