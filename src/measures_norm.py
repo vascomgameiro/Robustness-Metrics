@@ -3,12 +3,12 @@ import math
 import numpy as np
 import torch
 
-# Source: https://github.com/bneyshabur/generalization-bounds
-
+# Sources: 
+# https://github.com/bneyshabur/generalization-bounds
+# https://github.com/nitarshan/robust-generalization-measures
+# Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
 
 # Reparametrization
-
-
 def reparametrize_model(model):
     """
     Reparametrize the model by adjusting BatchNorm parameters and updating
