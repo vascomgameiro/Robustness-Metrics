@@ -95,7 +95,7 @@ def evaluate_and_save_all_attacks(
         model = model_class()
 
         # Train or load pre-trained weights (adjust path as necessary)
-        model_path = f"/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/models/{model_name}.pt"
+        model_path = f"models/{model_name}/{model_name}.pt"
         print(model_path)
         try:
             model.load_state_dict(torch.load(model_path))  # Load pre-trained weights
@@ -106,17 +106,20 @@ def evaluate_and_save_all_attacks(
 
         # Evaluate all attacks for this model
         print(f"Evaluating attacks on {model_name}...")
+
+        attacks_dir = os.path.join(save_dir, f"{model_name}/attacks")
+
         for config in attacks_to_test:
             attack_name = config["name"]
             attack_fn = config["model"]
             params = config["params"]
 
             # Generate and Save Adversarial Examples
-            generate_and_save_attack(model, test_loader_tiny, attack_fn, attack_name, params, model_name, save_dir)
+            generate_and_save_attack(model, test_loader_tiny, attack_fn, attack_name, params, model_name, attacks_dir)
 
             # Load Saved Adversarial
             adv_images_path = (
-                f"{save_dir}{model_name}_{attack_name}_{'_'.join(f'{k}_{v}' for k, v in params.items())}.pt"
+                f"{attacks_dir}{model_name}_{attack_name}_{'_'.join(f'{k}_{v}' for k, v in params.items())}.pt"
             )
             if os.path.exists(adv_images_path):
                 saved_data = torch.load(adv_images_path)  # Load the saved .pt file

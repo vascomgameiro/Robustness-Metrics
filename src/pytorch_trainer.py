@@ -139,14 +139,13 @@ class PyTorchTrainer:
 
     def predict(self, data_loader):
         self.model.eval()
-        predictions = []
+        logits = []
         with torch.no_grad():
             for images, _ in data_loader:
                 images = images.to(self.device)
                 outputs = self.model(images)
-                _, predicted = outputs.max(1)
-                predictions.extend(predicted.cpu().numpy())
-        return np.array(predictions)
+                logits.extend(outputs.cpu().numpy()) 
+        return np.array(logits)
 
     def save_predictions(self, predictions, path="predictions.npy"):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -154,30 +153,32 @@ class PyTorchTrainer:
         print(f"Predictions saved to {path}")
 
     def save_plots(self, path):
+    
         os.makedirs(os.path.dirname(path), exist_ok=True)
         epochs = range(1, len(self.history["train_loss"]) + 1)
 
-        plt.figure(figsize=(12, 5))
-
         # Loss Plot
-        plt.subplot(1, 2, 1)
+        plt.figure()
         plt.plot(epochs, self.history["train_loss"], label="Train Loss")
         plt.plot(epochs, self.history["val_loss"], label="Val Loss")
         plt.xlabel("Epochs")
         plt.ylabel("Loss")
         plt.title("Loss Over Epochs")
         plt.legend()
+        loss_path = f"{path}_loss.png" 
+        plt.savefig(loss_path)
+        print(f"Loss plot saved to {loss_path}")
+        plt.close()
 
         # Accuracy Plot
-        plt.subplot(1, 2, 2)
+        plt.figure()
         plt.plot(epochs, self.history["train_acc"], label="Train Accuracy")
         plt.plot(epochs, self.history["val_acc"], label="Val Accuracy")
         plt.xlabel("Epochs")
         plt.ylabel("Accuracy (%)")
         plt.title("Accuracy Over Epochs")
         plt.legend()
-
-        plt.tight_layout()
-        plt.savefig(path)
-        print(f"Training plots saved to {path}")
+        acc_path = f"{path}_accuracy.png" 
+        plt.savefig(acc_path)
+        print(f"Accuracy plot saved to {acc_path}")
         plt.close()
