@@ -1,11 +1,21 @@
 import torch, os, itertools
 import torchvision.models as models
 import attack_acc, adversarial_attacks
+from attack_acc import all_attacks
 import model_constructor as constructor
 from torch import nn, optim
 from model_mod import modify_last_layer, SimpleCNN
 from data_loader import dataloader
 from pytorch_trainer import PyTorchTrainer
+from attacks import (
+    fgsm_attack,
+    pgd_attack,
+    cw_attack,
+    bim_attack,
+    square_attack,
+    deepfool_attack,
+     evaluate_attack_with_logits,
+)
 
 
 #https://github.com/fra31/evaluating-adaptive-test-time-defenses/tree/master
@@ -73,9 +83,14 @@ models_to_train = [
     ]
 
 attacks_to_test = [
-    {"name": "FGSM", "model": adversarial_attacks.fgsm_attack, "params": {"eps": 0.1}},
-    {"name": "PGD", "model": adversarial_attacks.pgd_attack, "params": {"eps": 0.1, "alpha": 0.01, "steps": 1}},
+    {"name": "FGSM attack", "model": fgsm_attack, "params": {"eps": 0.1}},
+    #{"name": "PGD attack", "model": pgd_attack, "params": {"eps": 0.1, "alpha": 0.01, "steps": 5}},
+    # {'name': 'CW attack', 'model': cw_attack, 'params': {'confidence': 10, 'steps': 3, 'lr': 0.1}},
+    #{"name": "DeepFool attack", "model": deepfool_attack, "params": {"overshoot": 0.02, "max_iter": 3}},
+    # {'name': 'BIM attack', 'model': bim_attack, 'params': {'eps': 0.1, 'alpha': 0.01, 'steps': 3}},
+    # {'name': 'Square Attack', 'model': square_attack, 'params': {'max_queries': 10000, 'eps': 0.1}},
 ]
+
 
 """
         if the model is pretrained, need to modify its last layer to include nr of classes
@@ -96,14 +111,14 @@ attacks_to_test = [
 def main():
 
     #1 - ir buscar dados e criar dataloader
-    data_dir = "/Users/clarapereira/Desktop/Uni/Ano_5/PIC/data"
+    data_dir = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data"
     path_tiny = os.path.join(data_dir, "tiny.pt")  # diretoria para o tensor
     path_r = os.path.join(data_dir, "r.pt")  # diretoria para o tensor
 
     train_loader, val_loader, test_loader_tiny, test_loader_r, test_tiny = dataloader(path_tiny, path_r)
 
     #2 - treinar modelo, guardar o modelo e os logits
-    """
+    
     for config in models_to_train:
         
         model = config["model"]
@@ -124,16 +139,17 @@ def main():
 
         os.makedirs(path_to_model, exist_ok=True)
         torch.save(model.state_dict(), f"{path_to_model}/{model_name}_untrained.pt")
-        trainer.train(num_epochs=3)
+        trainer.train(num_epochs=1)
         trainer.save_best_model(f"{path_to_model}/{model_name}.pt")
         trainer.save_predictions(trainer.predict(test_loader_r), f"{path_to_predictions}/r.npy")
         trainer.save_plots(path_to_plots)
-    """
+        #falta aqui avaliar acc com o test normal
+    
     #3 - fazer ataques e guardar(cada ataque é guardado dentro da pasta do modelo correspondente, dentro da pasta "attacks")
     #     e avaliar as accuracies
     
-    attack_acc.evaluate_and_save_all_attacks(models_to_train, test_loader_tiny, attacks_to_test, save_dir = "models")
-
+        all_attacks(model, test_loader_r,attacks_to_test,  model_name, save_dir="/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/models/Attacked_tensors/")
+    
     
     #4 - calcular as métricas!
 
