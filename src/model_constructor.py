@@ -14,26 +14,26 @@ class CNN(nn.Module):
         
         super(CNN, self).__init__()
 
-        self.conv_layers = nn.ModuleList(conv_layers.layers)
-        self.fc_layers = nn.ModuleList(fc_layers.layers)
+        self.conv_layers = nn.Sequential(*conv_layers.layers)
+        self.fc_layers = nn.Sequential(*fc_layers.layers)
         self.num_classes = num_classes
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
         self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}" 
                 
     def forward(self, input): #input will be of form (Batch size, 3, 64, 64)
-        
+
         # conv layers
-        for layer in self.conv_layers:
-            input = layer(input)
+
+        input = self.conv_layers(input)
+
         
         # flatten to fit fully connected layer
         input = input.reshape(((input.shape[0], input.shape[1] * input.shape[2] * input.shape[3]))) 
 
         #fully connected layers
-        for layer in self.fc_layers:
-            input = layer(input)
-            
+        input = self.fc_layers(input)
+        
         return input
     
         
