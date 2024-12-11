@@ -48,7 +48,7 @@ import os
 save_dir='"/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/models/Attacked_tensors/"'
 
 
-def all_attacks(model, test_loader,attacks_to_test, model_name, save_dir="/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/models/Attacked_tensors/"):
+def all_attacks(model, test_loader, attacks_to_test, model_name, save_dir="/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/models/Attacked_tensors/"):
     for config in attacks_to_test:
         attack_name = config["name"]
         params = config["params"]
@@ -65,34 +65,37 @@ def generate_and_save_attack_logits_with_labels(model, test_loader, attack_fn, a
     all_labels = []
     
     os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{attack_name}_logits_labels.pth")
 
-    print(f"Generating adversarial examples and saving logits for {model_name} using {attack_name}...")
+    if not os.path.exists(save_path):
+        print(f"Generating adversarial examples and saving logits for {model_name} using {attack_name}...")
 
-    for images, labels in test_loader:
-        images, labels = images.to(device), labels.to(device)
-        
-        # Generate adversarial images
-        adv_images = attack_fn(model, images, labels, **params)
-        
-        # Get logits for adversarial examples
-        with torch.no_grad():
-            logits = model(adv_images)  # Forward pass on adversarial images
-        all_logits.append(logits.detach().cpu())
-        all_labels.append(labels.detach().cpu())
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            
+            # Generate adversarial images
+            adv_images = attack_fn(model, images, labels, **params)
+            
+            # Get logits for adversarial examples
+            with torch.no_grad():
+                logits = model(adv_images)  # Forward pass on adversarial images
+            all_logits.append(logits.detach().cpu())
+            all_labels.append(labels.detach().cpu())
 
-    # Concatenate all logits and labels
-    all_logits = torch.cat(all_logits, dim=0)
-    all_labels = torch.cat(all_labels, dim=0)
+        # Concatenate all logits and labels
+        all_logits = torch.cat(all_logits, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
 
-    # Save the logits and labels
-    save_path = os.path.join(save_dir, f"{model_name}_{attack_name}_logits_labels.pth")
-    torch.save({"logits": all_logits, "labels": all_labels}, save_path)
+        # Save the logits and labels
+        torch.save({"logits": all_logits, "labels": all_labels}, save_path)
 
-    print(f"Saved logits and labels to {save_path}")
-    #AQUI SE QUISERMOS PODEMOS POR AS OUTRAS METRICAS MAIS LOUCAS PQ TEMOS OS LOGITS
-    adversarial_accuracy = evaluate_attack_with_logits(all_logits, all_labels)  # Pass logits and labels
-    print(f"Accuracy on the test set after {attack_name} attack for {model_name}: {adversarial_accuracy:.2f}%")   
- 
+        print(f"Saved logits and labels to {save_path}")
+        #AQUI SE QUISERMOS PODEMOS POR AS OUTRAS METRICAS MAIS LOUCAS PQ TEMOS OS LOGITS
+        adversarial_accuracy = evaluate_attack_with_logits(all_logits, all_labels)  # Pass logits and labels
+        print(f"Accuracy on the test set after {attack_name} attack for {model_name}: {adversarial_accuracy:.2f}%")  
+    else:
+        print(f"Attack {attack_name} for model {model_name} already generated. Skipping calculations") 
+    
 # def evaluate_attacks_with_logits_and_labels(
 #     models_to_train,
 #     attacks_to_test, 

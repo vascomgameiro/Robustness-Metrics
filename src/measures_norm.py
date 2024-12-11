@@ -122,29 +122,29 @@ def calculate_measure(model, init_model, measure_func, operator, kwargs=None, p=
         return math.exp(calculate_measure(model, init_model, measure_func, "log_product", kwargs, p))
     elif operator == "norm":
         return calculate_measure(model, init_model, measure_func, "sum", kwargs, p) ** (1 / p)
-
-    measure_value = 0
-    for child, init_child in zip(model.children(), init_model.children()):
-        module_name = child._get_name()
-        if module_name in ["Linear", "Conv1d", "Conv2d", "Conv3d"]:
-            if operator == "log_product":
-                measure_value += math.log(measure_func(child, init_child, **kwargs))
-            elif operator == "sum":
-                measure_value += measure_func(child, init_child, **kwargs) ** p
-            elif operator == "max":
-                measure_value = max(measure_value, measure_func(child, init_child, **kwargs))
-        else:
-            measure_value += calculate_measure(child, init_child, measure_func, operator, kwargs, p)
+    else:
+        measure_value = 0
+        for child, init_child in zip(model.children(), init_model.children()):
+            module_name = child._get_name()
+            if module_name in ["Linear", "Conv1d", "Conv2d", "Conv3d"]:
+                if operator == "log_product":
+                    measure_value += math.log(measure_func(child, init_child, **kwargs))
+                elif operator == "sum":
+                    measure_value += measure_func(child, init_child, **kwargs) ** p
+                elif operator == "max":
+                    measure_value = max(measure_value, measure_func(child, init_child, **kwargs))
+            else:
+                measure_value += calculate_measure(child, init_child, measure_func, operator, kwargs, p)
     return measure_value
 
 
 # Utility Functions
-def calculate_norm(module, p=2.0, q=2.0):
+def calculate_norm(module, init_module, p=2.0, q=2.0):
     """Calculates the specified norm of a module's weight."""
     return module.weight.view(module.weight.size(0), -1).norm(p=p, dim=1).norm(q).item()
 
 
-def calculate_operator_norm(module, p=float("Inf")):
+def calculate_operator_norm(module, init_module, p=float("Inf")):
     """Calculates the operator norm of a module's weight."""
     _, singular_values, _ = module.weight.view(module.weight.size(0), -1).svd()
     return singular_values.norm(p).item()
@@ -157,7 +157,7 @@ def calculate_distance(module, init_module, p=2, q=2):
 
 def calculate_hidden_distance(module, init_module, p=2, q=2):
     """Calculates the hidden-layer-weighted distance."""
-    return (get_hidden_units(module) ** (1 - 1 / q)) * calculate_distance(module, init_module, p, q)
+    return (get_hidden_units(module, init_module) ** (1 - 1 / q)) * calculate_distance(module, init_module, p, q)
 
 
 def calculate_hidden_operator_norm(module, init_module, p=2, q=2, p_op=float("Inf")):
@@ -165,12 +165,12 @@ def calculate_hidden_operator_norm(module, init_module, p=2, q=2, p_op=float("In
     return calculate_hidden_distance(module, init_module, p, q) / calculate_operator_norm(module, p_op)
 
 
-def get_hidden_units(module):
+def get_hidden_units(module, init_module):
     """Returns the number of hidden units in a module."""
     return module.weight.size(0)
 
 
-def get_num_parameters(module):
+def get_num_parameters(module, init_module):
     """Calculates the number of parameters in a module."""
     bias_param = 0 if module.bias is None else module.bias.size(0)
     return bias_param + module.weight.size(0) * module.weight.view(module.weight.size(0), -1).size(1)
@@ -179,7 +179,6 @@ def get_num_parameters(module):
 def calculate_path_norm(model, device, p=2.0, input_size=(3, 64, 64)):
     """Calculates the Lp path norm of the model."""
     tmp_model = copy.deepcopy(model)
-    print([child for child in tmp_model.children()])
     tmp_model.eval()
     for param in tmp_model.parameters():
         if param.requires_grad:
