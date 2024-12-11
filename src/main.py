@@ -132,6 +132,7 @@ def main():
         print(config)
         model = config["model"]
         model_name = config["name"]
+        optimizer = config["params"]["optimizer"]
 
         untrained = copy.deepcopy(model)
         #the current working dir should be the project root: robustness-metrics
@@ -143,13 +144,16 @@ def main():
 
         if not os.path.exists(path_to_model):
 
+            optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
+            optim_cls = optims[optimizer]
+
             os.makedirs(path_to_model, exist_ok=True)
             trainer = PyTorchTrainer(
                 model = model,
                 train_loader = train_loader,
                 val_loader=val_loader,
                 criterion=nn.CrossEntropyLoss(),
-                optimizer=optim.Adam(model.parameters(), lr=model.lr),
+                optimizer=optim_cls(model.parameters(), lr=model.lr),
             )
 
             torch.save(model.state_dict(), f"{path_to_model}/untrained.pt")
