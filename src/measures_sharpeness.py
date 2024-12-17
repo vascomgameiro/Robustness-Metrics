@@ -293,13 +293,13 @@ def magnitude_aware_sharpness_sigma(
     return sigma
 
 
-def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float, num_params: int):
+def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float):
     """
     Calculate PAC-Bayes generalization bounds, flatness metrics, and sharpness measures.
     """
     dataset_size = len(dataloader.dataset)
     measures = {}
-
+    num_params = sum(p.numel() for p in model.parameters())
     # PAC-Bayes Sigma
     sigma_search_settings = {
         "model": model,
@@ -336,7 +336,7 @@ def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float, 
     return measures
 
 
-def calculate_sharpness_metrics(model, dataloader, accuracy: float, num_params: int):
+def calculate_sharpness_metrics(model, dataloader, accuracy: float):
     """
     Calculate sharpness metrics based on sharpness sigma.
 
@@ -350,6 +350,8 @@ def calculate_sharpness_metrics(model, dataloader, accuracy: float, num_params: 
         Dict[str, Any]: Dictionary of sharpness metrics.
     """
     measures = {}
+
+    num_params = sum(p.numel() for p in model.parameters())
 
     # Sharpness Sigma
     sharpness_sigma = sharpness_sigma_search(model, dataloader, accuracy, target_deviation=0.01)

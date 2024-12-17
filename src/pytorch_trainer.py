@@ -3,10 +3,21 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data as Dataloader
 
 
 class PyTorchTrainer:
-    def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cpu"):
+    def __init__(
+        self,
+        model: nn.Module,
+        train_loader: Dataloader,
+        val_loader: Dataloader,
+        criterion: nn.Module,
+        optimizer: optim.Optimizer,
+        scheduler: optim.lr_scheduler = None,
+    ):
         """
         Initialize a PyTorchTrainer object.
 
@@ -34,12 +45,12 @@ class PyTorchTrainer:
         self.scheduler = scheduler
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
-        self.model = model.to(device)
+        self.model = model.to(self.device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0
         self.best_model = None
 
-    def train(self, num_epochs=10, early_stopping_patience=5):
+    def train(self, num_epochs=10, early_stopping_patience=None):
         print("Starting Training...\n")
         no_improvement_epochs = 0
 
@@ -47,9 +58,11 @@ class PyTorchTrainer:
             train_loss, train_acc = self._train_epoch()
             val_loss, val_acc = self._validate_epoch()
 
-            # Adjust learning rate if scheduler is used
-            if self.scheduler:
-                self.scheduler.step()
+            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(val_loss)
+            else:
+                if self.scheduler:
+                    self.scheduler.step()
 
             # Save history
             self.history["train_loss"].append(train_loss)
@@ -73,7 +86,7 @@ class PyTorchTrainer:
                 no_improvement_epochs += 1
 
             # Early stopping
-            if no_improvement_epochs >= early_stopping_patience:
+            if early_stopping_patience is not None and no_improvement_epochs >= early_stopping_patience:
                 print(f"Early stopping triggered after {early_stopping_patience} epochs with no improvement.")
                 break
 
@@ -116,12 +129,12 @@ class PyTorchTrainer:
                 loss = self.criterion(outputs, labels)
 
                 # Metrics
-                running_loss += loss.item()
+                running_loss += loss.item() * labels.size(0)
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
 
-        epoch_loss = running_loss / len(self.val_loader)
+        epoch_loss = running_loss / total
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
 
@@ -144,7 +157,7 @@ class PyTorchTrainer:
             for images, _ in data_loader:
                 images = images.to(self.device)
                 outputs = self.model(images)
-                logits.extend(outputs.cpu().numpy()) 
+                logits.extend(outputs.cpu().numpy())
         return np.array(logits)
 
     def save_predictions(self, predictions, path="predictions.npy"):
@@ -153,7 +166,6 @@ class PyTorchTrainer:
         print(f"Predictions saved to {path}")
 
     def save_plots(self, path):
-    
         os.makedirs(os.path.dirname(path), exist_ok=True)
         epochs = range(1, len(self.history["train_loss"]) + 1)
 
@@ -165,7 +177,7 @@ class PyTorchTrainer:
         plt.ylabel("Loss")
         plt.title("Loss Over Epochs")
         plt.legend()
-        loss_path = f"{path}_loss.png" 
+        loss_path = f"{path}_loss.png"
         plt.savefig(loss_path)
         print(f"Loss plot saved to {loss_path}")
         plt.close()
@@ -178,7 +190,7 @@ class PyTorchTrainer:
         plt.ylabel("Accuracy (%)")
         plt.title("Accuracy Over Epochs")
         plt.legend()
-        acc_path = f"{path}_accuracy.png" 
+        acc_path = f"{path}_accuracy.png"
         plt.savefig(acc_path)
         print(f"Accuracy plot saved to {acc_path}")
         plt.close()
