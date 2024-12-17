@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as Dataloader
+import copy
 
 
 class PyTorchTrainer:
@@ -48,9 +49,10 @@ class PyTorchTrainer:
         self.model = model.to(self.device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0
+        self.final_train_acc = 0.0
         self.best_model = None
 
-    def train(self, num_epochs=10, early_stopping_patience=None):
+    def train(self, num_epochs=10, early_stopping_patience=5, test_loader=None):
         print("Starting Training...\n")
         no_improvement_epochs = 0
 
@@ -79,8 +81,14 @@ class PyTorchTrainer:
             # Save the best model based on validation accuracy
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
-                self.best_model = self.model.state_dict()  # Save best model weights
+                self.final_train_acc = train_acc
+                self.best_model = copy.deepcopy(self.model)  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
+                # If a test_loader is provided, calculate test accuracy
+                if test_loader is not None:
+                    test_acc = self._evaluate_test_accuracy(test_loader)
+                    print(f"Test Accuracy for best model: {test_acc:.2f}%")
+
                 no_improvement_epochs = 0
             else:
                 no_improvement_epochs += 1
@@ -138,10 +146,31 @@ class PyTorchTrainer:
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
 
+    def _evaluate_test_accuracy(self, test_loader):
+        self.model.eval()
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for images, labels in test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
+
+        return 100.0 * correct / total
+
     def save_best_model(self, path="best_model.pt"):
-        if self.best_model is not None:
-            torch.save(self.best_model, path)
+        # also saving train accuracy for best model
+        saved = self.best_model
+        model_path = os.path.join(path, "trained.pt")
+        acc_path = os.path.join(path, "final_train_acc")
+
+        if saved is not None:
+            torch.save(saved.state_dict(), model_path)
             print(f"Best model saved to {path}")
+            np.save(acc_path, np.array([self.final_train_acc]))
         else:
             print("No model was saved because no improvement was detected.")
 
@@ -153,12 +182,14 @@ class PyTorchTrainer:
     def predict(self, data_loader):
         self.model.eval()
         logits = []
+        y = []
         with torch.no_grad():
-            for images, _ in data_loader:
+            for images, labels in data_loader:
                 images = images.to(self.device)
                 outputs = self.model(images)
                 logits.extend(outputs.cpu().numpy())
-        return np.array(logits)
+                y.extend(labels.cpu().numpy())
+        return np.array(logits), np.array(y)
 
     def save_predictions(self, predictions, path="predictions.npy"):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -177,7 +208,7 @@ class PyTorchTrainer:
         plt.ylabel("Loss")
         plt.title("Loss Over Epochs")
         plt.legend()
-        loss_path = f"{path}_loss.png"
+        loss_path = os.path.join(path, "loss.png")
         plt.savefig(loss_path)
         print(f"Loss plot saved to {loss_path}")
         plt.close()
@@ -190,7 +221,7 @@ class PyTorchTrainer:
         plt.ylabel("Accuracy (%)")
         plt.title("Accuracy Over Epochs")
         plt.legend()
-        acc_path = f"{path}_accuracy.png"
+        acc_path = os.path.join(path, "acc.png")
         plt.savefig(acc_path)
         print(f"Accuracy plot saved to {acc_path}")
         plt.close()
