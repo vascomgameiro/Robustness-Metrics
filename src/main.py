@@ -88,11 +88,11 @@ print(f"list of {len(models_to_train)} models generated!!")
 
 attacks_to_test = [
     {"name": "FGSM_attack", "model": fgsm_attack, "params": {"eps": 0.1}},
-    #{"name": "PGD_attack", "model": pgd_attack, "params": {"eps": 0.1, "alpha": 0.01, "steps": 5}},
-    # {'name': 'CW_attack', 'model': cw_attack, 'params': {'confidence': 10, 'steps': 3, 'lr': 0.1}},
-    #{"name": "DeepFool_attack", "model": deepfool_attack, "params": {"overshoot": 0.02, "max_iter": 3}},
-    # {'name': 'BIM_attack', 'model': bim_attack, 'params': {'eps': 0.1, 'alpha': 0.01, 'steps': 3}},
-    # {'name': 'Square_Attack', 'model': square_attack, 'params': {'max_queries': 10000, 'eps': 0.1}},
+    {"name": "PGD_attack", "model": pgd_attack, "params": {"eps": 0.1, "alpha": 0.01, "steps": 5}},
+    {'name': 'CW_attack', 'model': cw_attack, 'params': {'confidence': 10, 'steps': 3, 'lr': 0.1}},
+    {"name": "DeepFool_attack", "model": deepfool_attack, "params": {"overshoot": 0.02, "max_iter": 3}},
+     {'name': 'BIM_attack', 'model': bim_attack, 'params': {'eps': 0.1, 'alpha': 0.01, 'steps': 3}},
+     {'name': 'Square_Attack', 'model': square_attack, 'params': {'max_queries': 10000, 'eps': 0.1}},
 ]
 
 """
@@ -103,7 +103,7 @@ attacks_to_test = [
             model=model,
             train_loader=train_loader,
 """     
-models_to_train = [models_to_train[0]]
+models_to_train = [models_to_train[11]]
 ######
 # queremos:
 #1 - ir buscar dados e criar dataloader
@@ -115,7 +115,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #1 - ir buscar dados e criar dataloader
-    data_dir = "/Users/clarapereira/Desktop/Uni/Ano_5/PIC/data"
+    data_dir = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data"
     path_tiny = os.path.join(data_dir, "tiny.pt")  # diretoria para o tensor
     path_r = os.path.join(data_dir, "r.pt")  # diretoria para o tensor
 
@@ -157,7 +157,7 @@ def main():
 
             torch.save(model.state_dict(), f"{path_to_model}/untrained.pt")
 
-            trainer.train(num_epochs=2)
+            trainer.train(num_epochs=100,test_loader=test_loader_tiny)
             model = trainer.best_model
             trainer.save_best_model(path_to_model)
             trainer.save_plots(path_to_plots)

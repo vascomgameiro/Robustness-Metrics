@@ -40,7 +40,7 @@ class PyTorchTrainer:
         self.final_train_acc = 0.0
         self.best_model = None
 
-    def train(self, num_epochs=10, early_stopping_patience=5):
+    def train(self, num_epochs=10, early_stopping_patience=5,test_loader=None):
         print("Starting Training...\n")
         no_improvement_epochs = 0
 
@@ -70,6 +70,11 @@ class PyTorchTrainer:
                 self.final_train_acc = train_acc
                 self.best_model = copy.deepcopy(self.model)  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
+                # If a test_loader is provided, calculate test accuracy
+                if test_loader is not None:
+                    test_acc = self._evaluate_test_accuracy(test_loader)
+                    print(f"Test Accuracy for best model: {test_acc:.2f}%")
+                
                 no_improvement_epochs = 0
             else:
                 no_improvement_epochs += 1
@@ -127,6 +132,24 @@ class PyTorchTrainer:
         epoch_loss = running_loss / len(self.val_loader)
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
+    
+    def _evaluate_test_accuracy(self, test_loader):
+  
+        self.model.eval()
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for images, labels in test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
+
+        return 100.0 * correct / total
+
+        
 
     def save_best_model(self, path="best_model.pt"):
         #also saving train accuracy for best model
