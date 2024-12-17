@@ -57,7 +57,7 @@ def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
             fc_layers = constructor.FC(nr_fc=depth, fc_size=fc_size, act_funs=act_fun, dropouts=dropouts, in_features=conv_layers.finaldim, num_classes=62, batchnorm=True)
             
             # Create the model using the CNN constructor
-            model = constructor.CNN(conv_layers=conv_layers, fc_layers=fc_layers, num_classes=62, lr=lr)  # Assuming 62 classes as an example
+            model = constructor.CNN(conv_layers=conv_layers, fc_layers=fc_layers, num_classes=62, lr=lr, optim = optimizer)  # Assuming 62 classes as an example
             
             # Store the model and its parameters in the list
             model_info = {
@@ -76,7 +76,6 @@ lrs = [0.01, 0.001]
 drops = {"2": [[0.0, 0.0],[0.5, 0.2]], "4": [[0.0]*4,[0.5, 0.3, 0.3, 0.2]]}
 optimizers = ["adam", "sgd"]
 
-
 models_to_train = models_iterator(depths, filters_sizes, optimizers, drops, lrs)
 print(models_to_train)
 print(f"list of {len(models_to_train)} models generated!!")
@@ -85,7 +84,7 @@ print(f"list of {len(models_to_train)} models generated!!")
 #try this!!
 #decent_conv = constructor.Conv(3, [16, 32, 64])
 #decent_fc = constructor.FC(3, [300, 150, 62], ['ReLU']* 2, dropouts= [0.5, 0.2], in_features=decent_conv.finaldim)
-#decent_model = constructor.CNN(decent_conv, decent_fc, 62, 0.01)
+#decent_model = constructor.CNN(decent_conv, decent_fc, 62, 0.01, "adam")
 
 attacks_to_test = [
     {"name": "FGSM_attack", "model": fgsm_attack, "params": {"eps": 0.1}},
@@ -104,7 +103,7 @@ attacks_to_test = [
             model=model,
             train_loader=train_loader,
 """     
-
+models_to_train = [models_to_train[0]]
 ######
 # queremos:
 #1 - ir buscar dados e criar dataloader
@@ -160,7 +159,7 @@ def main():
 
             trainer.train(num_epochs=2)
             model = trainer.best_model
-            trainer.save_best_model(f"{path_to_model}/trained.pt")
+            trainer.save_best_model(path_to_model)
             trainer.save_plots(path_to_plots)
 
             logits_r, labels_r = trainer.predict(test_loader_r)
@@ -190,7 +189,6 @@ def main():
         #4 - calcular as métricas!
 
         #Complex Measures
-
         #nos datasets original/ com shift natural:
         complex_r = measures_complexity.evaluate_model_metrics(logits_r, labels_r)
         print_save_measures(complex_r, "Complex measures for R test set", f"{path_to_measures}/complexity_r.pt") 

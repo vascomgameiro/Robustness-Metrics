@@ -37,6 +37,7 @@ class PyTorchTrainer:
         self.model = model.to(device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0
+        self.final_train_acc = 0.0
         self.best_model = None
 
     def train(self, num_epochs=10, early_stopping_patience=5):
@@ -66,6 +67,7 @@ class PyTorchTrainer:
             # Save the best model based on validation accuracy
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
+                self.final_train_acc = train_acc
                 self.best_model = copy.deepcopy(self.model)  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
                 no_improvement_epochs = 0
@@ -77,7 +79,7 @@ class PyTorchTrainer:
                 self.model = self.best_model
                 print(f"Early stopping triggered after {early_stopping_patience} epochs with no improvement.")
                 break
-
+            
         print("Training Complete!")
 
     def _train_epoch(self):
@@ -127,10 +129,15 @@ class PyTorchTrainer:
         return epoch_loss, epoch_acc
 
     def save_best_model(self, path="best_model.pt"):
+        #also saving train accuracy for best model
         saved = self.best_model
+        model_path = os.path.join(path, "trained.pt")
+        acc_path = os.path.join(path, "final_train_acc")
+
         if saved is not None:
-            torch.save(saved.state_dict(), path)
+            torch.save(saved.state_dict(), model_path)
             print(f"Best model saved to {path}")
+            np.save(acc_path, np.array([self.final_train_acc]))
         else:
             print("No model was saved because no improvement was detected.")
 

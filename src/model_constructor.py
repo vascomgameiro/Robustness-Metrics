@@ -10,7 +10,7 @@ class CNN(nn.Module):
     Each is defined below and has multiple options for architecture.
     """
 
-    def __init__(self, conv_layers, fc_layers, num_classes, lr):
+    def __init__(self, conv_layers, fc_layers, num_classes, lr, optim):
         
         super(CNN, self).__init__()
 
@@ -19,7 +19,8 @@ class CNN(nn.Module):
         self.num_classes = num_classes
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
-        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}" 
+        self.optim = optim
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}{optim}" 
                 
     def forward(self, input): #input will be of form (Batch size, 3, 64, 64)
 
