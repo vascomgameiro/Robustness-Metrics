@@ -10,7 +10,7 @@ class CNN(nn.Module):
     Each is defined below and has multiple options for architecture.
     """
 
-    def __init__(self, conv_layers, fc_layers, num_classes, lr):
+    def __init__(self, conv_layers, fc_layers, num_classes, lr, optimizer):
         
         super(CNN, self).__init__()
 
@@ -19,7 +19,7 @@ class CNN(nn.Module):
         self.num_classes = num_classes
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
-        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}" 
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}_{optimizer}" 
                 
     def forward(self, input): #input will be of form (Batch size, 3, 64, 64)
 
@@ -49,7 +49,7 @@ class Conv():
         self.name = f"conv{nr_conv}{maxpool_batchnorm}"
         self.layers = nn.ModuleList()
 
-        input_size = 64
+        input_size = 32
         channels = 3 #rgb
 
         for i in range(nr_conv):
@@ -76,7 +76,7 @@ class Conv():
 
 class FC():
      
-     def __init__(self, nr_fc = 0, fc_size = [], act_funs = [], dropouts = [], in_features = 0, batchnorm = True, num_classes=62):
+     def __init__(self, nr_fc = 0, fc_size = [], act_funs = [], dropouts = [], in_features = 0, batchnorm = True, num_classes=10):
         """
         nr_fc -> nr of fully connected layers. if =0, then it is just linear
         fc_size -> list with nr of nodes for each layer

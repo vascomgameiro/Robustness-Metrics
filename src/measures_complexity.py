@@ -21,32 +21,41 @@ def calculate_top_n_accuracy(y_true, y_pred, n=5, normalize=True):
 def calculate_uncertainty_rejection_curve(errors, uncertainty, group_by_uncertainty=True):
     """
     Calculate the uncertainty rejection curve.
+    x-axis: rejection rate
+    y-axis: error rate (1-accuracy)
     """
     n_samples = errors.shape[0]
-    if group_by_uncertainty:
-        df = pd.DataFrame({"errors": errors, "uncertainty": uncertainty})
-        df["mean_errors"] = df.groupby("uncertainty")["errors"].transform("mean")
-        errors = df["mean_errors"].sort_index().to_numpy()
-    else:
-        sort_idx = np.argsort(uncertainty)
-        errors = errors[sort_idx]
+    df = pd.DataFrame({"errors": errors, "uncertainty": uncertainty, "nrsamples": np.ones(n_samples)})
 
-    error_rates = np.zeros(n_samples + 1)
-    error_rates[:-1] = np.cumsum(errors[::-1]) / n_samples
-    return error_rates
+    if group_by_uncertainty:
+        df = df.groupby("uncertainty").agg({"errors": "sum", "nrsamples": "sum"})
+
+    df = df.sort_values(by= "uncertainty")
+    sample_sizes = df["nrsamples"].to_numpy()
+    sample_sizes = np.cumsum(sample_sizes)
+    nr_points = len(sample_sizes)
+    rejection_rate = np.ones(nr_points+1)
+    rejection_rate[1:] = np.ones(nr_points) - sample_sizes / n_samples # in descending order
+
+    errors = df["errors"].to_numpy()
+    error_rates = np.zeros(nr_points+1)
+    error_rates[1:] = np.cumsum(errors) / sample_sizes #also in descending order
+
+    return error_rates , rejection_rate
 
 
 def calculate_aucs(errors, uncertainty):
     """
     Calculate AUCs for uncertainty rejection.
     """
-    rejection_curve = calculate_uncertainty_rejection_curve(errors, uncertainty)
-    uncertainty_auc = auc(np.linspace(0, 1, len(rejection_curve)), rejection_curve)
-    random_auc = rejection_curve[0] / 2
-    ideal_curve = calculate_uncertainty_rejection_curve(errors, errors)
-    ideal_auc = auc(np.linspace(0, 1, len(ideal_curve)), ideal_curve)
-    rejection_ratio = (uncertainty_auc - random_auc) / (ideal_auc - random_auc) * 100
-    return rejection_ratio, uncertainty_auc
+    rejection_curve, rejection_rates = calculate_uncertainty_rejection_curve(errors, uncertainty)
+    uncertainty_auc = auc(rejection_rates, rejection_curve)
+    #random_auc = rejection_curve[-1] / 2
+    #ideal_curve = calculate_uncertainty_rejection_curve(errors, errors)
+    #ideal_auc = auc(np.linspace(0, 1, len(ideal_curve)), ideal_curve)
+    #rejection_ratio = (uncertainty_auc - random_auc) / (ideal_auc - random_auc) * 100
+    # -> rejection ratio is not evaluationg the model's performance but the uncertainty measure's performance.... 
+    return uncertainty_auc #, rejection_ratio
 
 
 def calculate_f_beta_metrics(errors, uncertainty, threshold, beta=1.0):
@@ -56,8 +65,8 @@ def calculate_f_beta_metrics(errors, uncertainty, threshold, beta=1.0):
     acceptable = (errors <= threshold).astype(float)
     precision, recall, _ = precision_recall_curve(acceptable, -uncertainty)
     f_scores = (1 + beta**2) * (precision * recall) / (beta**2 * precision + recall + 1e-10)
-    auc_score = auc(np.linspace(0, 1, len(f_scores)), f_scores)
-    f95 = f_scores[int(0.95 * len(f_scores))]
+    auc_score = auc(np.linspace(0, 1, len(f_scores)), f_scores) #does not make much sense?
+    f95 = f_scores[int(0.95 * len(f_scores))] 
     return auc_score, f95
 
 
@@ -102,7 +111,7 @@ def evaluate_model_metrics(logits, labels, threshold=0.5, beta=1.0):
     accuracy = accuracy_score(labels, predictions)
     top_5_accuracy = calculate_top_n_accuracy(labels, probabilities, n=5)
     log_loss_score = log_loss(labels, probabilities)
-    rejection_ratio, uncertainty_auc = calculate_aucs(errors, entropy)
+    uncertainty_auc = calculate_aucs(errors, entropy)
     f_beta_auc, f95 = calculate_f_beta_metrics(errors, entropy, threshold, beta)
     roc_auc = roc_auc_score(labels, probabilities, multi_class="ovr")
 
@@ -115,10 +124,10 @@ def evaluate_model_metrics(logits, labels, threshold=0.5, beta=1.0):
         "Top-5 Accuracy": top_5_accuracy,
         "Log Loss": log_loss_score,
         "Cross Entropy Loss": cross_entropy_loss,
-        "Rejection Ratio": rejection_ratio,
+        #"Rejection Ratio": rejection_ratio,
         "Uncertainty Rejection AUC": uncertainty_auc,
-        "F-Beta AUC": f_beta_auc,
-        "F-Beta at 95%": f95,
+        "F-Beta AUC": f_beta_auc, #does not make much sense
+        "F-Beta at 95%": f95, #don't know what this means, don't know if it is well calculated
         "ROC AUC": roc_auc,
         "Entropy": entropy.mean(),
     }
