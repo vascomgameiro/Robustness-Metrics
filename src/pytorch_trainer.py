@@ -2,11 +2,23 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch, copy
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.utils.data as Dataloader
+import copy
 
 
 class PyTorchTrainer:
-    def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler=None, device="cpu"):
+    def __init__(
+        self,
+        model: nn.Module,
+        train_loader: Dataloader,
+        val_loader: Dataloader,
+        criterion: nn.Module,
+        optimizer: optim.Optimizer,
+        scheduler: optim.lr_scheduler = None,
+    ):
         """
         Initialize a PyTorchTrainer object.
 
@@ -34,12 +46,13 @@ class PyTorchTrainer:
         self.scheduler = scheduler
         self.device = device
         print(f"Using device: {self.device}")
-        self.model = model.to(device)
+        self.model = model.to(self.device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         self.best_val_acc = 0.0
+        self.final_train_acc = 0.0
         self.best_model = None
 
-    def train(self, num_epochs=10, early_stopping_patience=5):
+    def train(self, num_epochs=10, early_stopping_patience=5, test_loader=None):
         print("Starting Training...\n")
         no_improvement_epochs = 0
 
@@ -66,15 +79,20 @@ class PyTorchTrainer:
             # Save the best model based on validation accuracy
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
+                self.final_train_acc = train_acc
                 self.best_model = copy.deepcopy(self.model)  # Save best model weights
                 print(f"New best model found! Validation Accuracy: {val_acc:.2f}%")
+                # If a test_loader is provided, calculate test accuracy
+                if test_loader is not None:
+                    test_acc = self._evaluate_test_accuracy(test_loader)
+                    print(f"Test Accuracy for best model: {test_acc:.2f}%")
+
                 no_improvement_epochs = 0
             else:
                 no_improvement_epochs += 1
 
-            # Early stopping 
-            if no_improvement_epochs >= early_stopping_patience:
-                self.model = self.best_model
+            # Early stopping
+            if early_stopping_patience is not None and no_improvement_epochs >= early_stopping_patience:
                 print(f"Early stopping triggered after {early_stopping_patience} epochs with no improvement.")
                 break
 
@@ -116,20 +134,40 @@ class PyTorchTrainer:
                 loss = self.criterion(outputs, labels)
 
                 # Metrics
-                running_loss += loss.item()
+                running_loss += loss.item() * labels.size(0)
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
 
-        epoch_loss = running_loss / len(self.val_loader)
+        epoch_loss = running_loss / total
         epoch_acc = 100.0 * correct / total
         return epoch_loss, epoch_acc
 
+    def _evaluate_test_accuracy(self, test_loader):
+        self.model.eval()
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for images, labels in test_loader:
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
+
+        return 100.0 * correct / total
+
     def save_best_model(self, path="best_model.pt"):
+        # also saving train accuracy for best model
         saved = self.best_model
+        model_path = os.path.join(path, "trained.pt")
+        acc_path = os.path.join(path, "final_train_acc")
+
         if saved is not None:
-            torch.save(saved.state_dict(), path)
+            torch.save(saved.state_dict(), model_path)
             print(f"Best model saved to {path}")
+            np.save(acc_path, np.array([self.final_train_acc]))
         else:
             print("No model was saved because no improvement was detected.")
 
@@ -146,7 +184,7 @@ class PyTorchTrainer:
             for images, labels in data_loader:
                 images = images.to(self.device)
                 outputs = self.model(images)
-                logits.extend(outputs.cpu().numpy()) 
+                logits.extend(outputs.cpu().numpy())
                 y.extend(labels.cpu().numpy())
         return np.array(logits), np.array(y)
 
@@ -156,8 +194,7 @@ class PyTorchTrainer:
         print(f"Predictions saved to {path}")
 
     def save_plots(self, path):
-        
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         epochs = range(1, len(self.history["train_loss"]) + 1)
 
         # Loss Plot
@@ -181,7 +218,7 @@ class PyTorchTrainer:
         plt.ylabel("Accuracy (%)")
         plt.title("Accuracy Over Epochs")
         plt.legend()
-        acc_path = os.path.join(path, "acc.png") 
+        acc_path = os.path.join(path, "acc.png")
         plt.savefig(acc_path)
         print(f"Accuracy plot saved to {acc_path}")
         plt.close()
