@@ -32,7 +32,7 @@ class PyTorchTrainer:
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         print(f"Using device: {self.device}")
         self.model = model.to(device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
@@ -49,7 +49,7 @@ class PyTorchTrainer:
 
             # Adjust learning rate if scheduler is used
             if self.scheduler:
-                self.scheduler.step()
+                self.scheduler.step(val_loss)
 
             # Save history
             self.history["train_loss"].append(train_loss)
@@ -87,10 +87,9 @@ class PyTorchTrainer:
         for images, labels in self.train_loader:
             images, labels = images.to(self.device), labels.to(self.device)
 
+            self.optimizer.zero_grad()
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
-
-            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
