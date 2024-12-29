@@ -6,6 +6,7 @@ from typing import Optional
 import math
 import numpy as np
 from torch.utils.data import DataLoader
+import time
 
 # sources:
 # https://github.com/facebookresearch/decodable_information_bottleneck
@@ -40,9 +41,11 @@ def apply_perturbation(
             if noise_type == "gaussian":
                 if magnitude_eps is not None:
                     std = torch.sqrt(sigma**2 * torch.abs(param) ** 2 + magnitude_eps**2)
+                    mean = torch.zeros_like(param)
+                    noise = torch.normal(mean=mean, std=std, generator=rng)
                 else:
                     std = sigma
-                noise = torch.normal(mean=0.0, std=std, size=param.size(), generator=rng, device=device)
+                    noise = torch.normal(mean=0.0, std=std, size=param.size(), generator=rng, device=device)
             else:  # uniform
                 if uniform_range is None:
                     raise ValueError("uniform_range must be specified for uniform noise")
@@ -107,7 +110,6 @@ def calculate_perturbed_accuracy(model, dataloader):
     with torch.no_grad():
         for data, target in dataloader:
             data, target = data.to(device), target.to(device)
-            print(model)
             output = model(data)
             pred = output.argmax(dim=1)
             batch_correct += pred.eq(target).sum().item()
@@ -153,10 +155,8 @@ def pac_bayes_sigma_search(
 
         for _ in range(monte_carlo_iter):
             with apply_perturbation(model, sigma, magnitude_eps=magnitude_eps):
-                print(model)
                 perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
                 accuracy_samples.append(perturbed_accuracy)
-
         deviation = abs(np.mean(accuracy_samples) - accuracy)
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
             break
@@ -191,7 +191,7 @@ def sharpness_sigma_search(
         sigma = (lower + upper) / 2.0
         min_accuracy = float("inf")  # Initialize to infinity for min comparison
 
-        for _ in range(monte_carlo_iter):
+        for mt in range(monte_carlo_iter):
             with apply_perturbation(
                 model,
                 sigma,
@@ -201,10 +201,8 @@ def sharpness_sigma_search(
             ):
                 original_state = deepcopy(model.state_dict())
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
                 for _ in range(ascent_steps):
                     model = gradient_ascent_step(model, dataloader, learning_rate)
-
                     # Calculate perturbation norm
                     perturb_norm = calculate_perturbation_norm(model, original_state)
                     if perturb_norm > sigma:
@@ -309,11 +307,11 @@ def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float):
         return 0.25 * (numerator / denominator).log() + math.log(dataset_size / sigma) + 10
 
     measures["PAC_Bayes_Sigma"] = sigma
-    measures["PAC_Bayes_Bound"] = _pacbayes_bound(distance_vector, sigma)
+    measures["PAC_Bayes_Bound"] = float(_pacbayes_bound(distance_vector, sigma))
     measures["PAC_Bayes_Flatness"] = 1 / sigma**2
 
     measures["PAC_Bayes_MAG_Sigma"] = mag_sigma
-    measures["PAC_Bayes_MAG_Bound"] = _pacbayes_mag_bound(distance_vector, mag_sigma)
+    measures["PAC_Bayes_MAG_Bound"] = float(_pacbayes_mag_bound(distance_vector, mag_sigma))
     measures["PAC_Bayes_MAG_Flatness"] = 1 / mag_sigma**2
 
     return measures

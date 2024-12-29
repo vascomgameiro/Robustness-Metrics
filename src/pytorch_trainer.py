@@ -18,6 +18,7 @@ class PyTorchTrainer:
         criterion: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler = None,
+        device: str = "cuda",
     ):
         """
         Initialize a PyTorchTrainer object.

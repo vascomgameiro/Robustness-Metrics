@@ -18,7 +18,7 @@ class CNN(nn.Module):
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
         self.optim = optim
-        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}{optim}"
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}_{optim}"
 
     def forward(self, input):  # input will be of form (Batch size, 3, 64, 64)
         # conv layers
