@@ -13,12 +13,15 @@ from torch.utils.data import DataLoader
 # https://github.com/nitarshan/robust-generalization-measures
 # Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
 
+# Automatically select device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+rng = torch.Generator(device=device)
+
 
 @contextmanager
 def apply_perturbation(
     model: nn.Module,
     sigma: float,
-    rng: torch.Generator,
     noise_type: str = "gaussian",
     magnitude_eps: Optional[float] = None,
     uniform_range: Optional[float] = None,
@@ -29,15 +32,18 @@ def apply_perturbation(
     if noise_type not in ["gaussian", "uniform"]:
         raise ValueError("noise_type must be either 'gaussian' or 'uniform'")
 
-    device = next(model.parameters()).device
+    model = model.to(device)  # Ensure model is on the correct device
     original_state = deepcopy(model.state_dict())
 
     try:
         for name, param in model.named_parameters():
             if noise_type == "gaussian":
-                std = torch.sqrt(sigma**2 * torch.abs(param) ** 2 + magnitude_eps**2) if magnitude_eps else sigma
-                noise = torch.normal(mean=0.0, std=std, size=param.size(), generator=rng).to(device)
-            elif noise_type == "uniform":
+                if magnitude_eps is not None:
+                    std = torch.sqrt(sigma**2 * torch.abs(param) ** 2 + magnitude_eps**2)
+                else:
+                    std = sigma
+                noise = torch.normal(mean=0.0, std=std, size=param.size(), generator=rng, device=device)
+            else:  # uniform
                 if uniform_range is None:
                     raise ValueError("uniform_range must be specified for uniform noise")
                 noise = torch.empty(param.size(), device=device).uniform_(-uniform_range, uniform_range, generator=rng)
@@ -53,7 +59,7 @@ def calculate_perturbation_norm(model: nn.Module, original_state: dict) -> float
     """
     perturbations = []
     for name, param in model.named_parameters():
-        original_param = original_state[name].to(param.device)
+        original_param = original_state[name].to(device)
         perturbation = param.data - original_param
         perturbations.append(perturbation.view(-1))
     concatenated = torch.cat(perturbations)
@@ -95,24 +101,27 @@ def normalize_parameter_perturbation(model, device, sigma, original_state, pertu
 
 
 def calculate_perturbed_accuracy(model, dataloader):
+    model = model.to(device)  # Ensure model is on the correct device
+    model.eval()
     batch_correct = 0
-    for data, target in dataloader:
-        output = model(data)
-        pred = output.argmax(dim=1)
-        batch_correct += pred.eq(target).sum().item()
+    with torch.no_grad():
+        for data, target in dataloader:
+            data, target = data.to(device), target.to(device)
+            print(model)
+            output = model(data)
+            pred = output.argmax(dim=1)
+            batch_correct += pred.eq(target).sum().item()
     perturbed_accuracy = batch_correct / len(dataloader.dataset)
     return perturbed_accuracy
 
 
-def gradient_ascent_step(model, dataloader, learning_rate, device):
-    # Sample a batch
-    try:
-        data, target = next(data_iter)
-    except (NameError, StopIteration):
-        data_iter = iter(dataloader)
-        data, target = next(data_iter)
-
+def gradient_ascent_step(model, dataloader, learning_rate):
+    model = model.to(device)
+    model.train()
+    data_iter = iter(dataloader)
+    data, target = next(data_iter)
     data, target = data.to(device), target.to(device)
+
     output = model(data)
     loss = nn.functional.cross_entropy(output, target)
     loss.backward()
@@ -121,6 +130,7 @@ def gradient_ascent_step(model, dataloader, learning_rate, device):
     for param in model.parameters():
         if param.grad is not None:
             param.data += learning_rate * param.grad.data
+    return model
 
 
 def pac_bayes_sigma_search(
@@ -136,15 +146,14 @@ def pac_bayes_sigma_search(
     deviation_tolerance: float = 1e-2,
     bound_tolerance: float = 1e-5,
 ):
-    """
-    Binary search for sigma based on accuracy deviation.
-    """
+    model = model.to(device)
     for _ in range(search_depth):
         sigma = (lower + upper) / 2
         accuracy_samples = []
 
         for _ in range(monte_carlo_iter):
-            with apply_perturbation(model, sigma, magnitude_eps):
+            with apply_perturbation(model, sigma, magnitude_eps=magnitude_eps):
+                print(model)
                 perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
                 accuracy_samples.append(perturbed_accuracy)
 
@@ -166,7 +175,7 @@ def sharpness_sigma_search(
     target_deviation: float,
     learning_rate: float,
     ascent_steps: int = 20,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    device: str = device,
     magnitude_eps: float = None,
     noise_type: str = "gaussian",
     uniform_range: Optional[float] = None,
@@ -177,10 +186,7 @@ def sharpness_sigma_search(
     deviation_tolerance: float = 1e-2,
     bound_tolerance: float = 5e-3,
 ) -> float:
-    """
-    Binary search for sigma based on sharpness criteria and accuracy deviation.
-    """
-
+    model = model.to(device)
     for _ in range(search_depth):
         sigma = (lower + upper) / 2.0
         min_accuracy = float("inf")  # Initialize to infinity for min comparison
@@ -193,30 +199,23 @@ def sharpness_sigma_search(
                 noise_type=noise_type,
                 uniform_range=uniform_range,
             ):
-                # Save the original state within the context
                 original_state = deepcopy(model.state_dict())
-
-                # Gradient ascent to simulate sharpness effect
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
                 for _ in range(ascent_steps):
-                    model.train()
-                    optimizer.zero_grad()
-                    model = gradient_ascent_step(model, dataloader, learning_rate, device)
+                    model = gradient_ascent_step(model, dataloader, learning_rate)
 
                     # Calculate perturbation norm
                     perturb_norm = calculate_perturbation_norm(model, original_state)
                     if perturb_norm > sigma:
                         normalize_parameter_perturbation(model, device, sigma, original_state, perturb_norm)
 
-                # Evaluate perturbed model's accuracy
                 model.eval()
                 perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
                 min_accuracy = min(min_accuracy, perturbed_accuracy)
 
-        # Calculate deviation
         deviation = abs(min_accuracy - accuracy)
 
-        # Check if deviation is within tolerance
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
             break
         elif deviation > target_deviation:
@@ -234,7 +233,7 @@ def magnitude_aware_sharpness_sigma(
     target_deviation: float,
     learning_rate: float,
     ascent_steps: int = 20,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    device: str = device,
     search_depth: int = 20,
     monte_carlo_iter: int = 15,
     upper: float = 5.0,
@@ -243,10 +242,7 @@ def magnitude_aware_sharpness_sigma(
     bound_tolerance: float = 5e-3,
     use_plus_one: bool = False,
 ) -> float:
-    """
-    Binary search for sigma based on magnitude-aware sharpness criteria and accuracy deviation.
-    """
-
+    model = model.to(device)
     original_weights = [param.data.clone() for param in model.parameters()]
 
     for j in range(search_depth):
@@ -258,31 +254,20 @@ def magnitude_aware_sharpness_sigma(
                 model=model,
                 sigma=sigma,
                 noise_type="uniform",
-                uniform_range=sigma,  # Since max_perturb = (|v| + ac) * m
+                uniform_range=sigma,
             ):
-                # Gradient ascent to simulate sharpness effect
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
-                # Apply projection based on original weights and sigma
                 clamp_weights(model, original_weights, sigma, use_plus_one)
 
-                # Gradient ascent to simulate sharpness effect
                 for _ in range(ascent_steps):
-                    model.train()
-                    optimizer.zero_grad()
-                    gradient_ascent_step(model, dataloader, learning_rate, device)
-
-                    # Apply projection after ascent step
+                    model = gradient_ascent_step(model, dataloader, learning_rate)
                     clamp_weights(model, original_weights, sigma, use_plus_one)
 
-            # Evaluate perturbed model's accuracy
             perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
             min_accuracy = min(min_accuracy, perturbed_accuracy)
 
-        # Calculate deviation
         deviation = abs(min_accuracy - accuracy)
 
-        # Check if deviation is within tolerance
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
             break
         elif deviation > target_deviation:
@@ -294,12 +279,13 @@ def magnitude_aware_sharpness_sigma(
 
 
 def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float):
-    """
-    Calculate PAC-Bayes generalization bounds, flatness metrics, and sharpness measures.
-    """
+    model = model.to(device)
+    init_model = init_model.to(device)
+
     dataset_size = len(dataloader.dataset)
     measures = {}
     num_params = sum(p.numel() for p in model.parameters())
+
     # PAC-Bayes Sigma
     sigma_search_settings = {
         "model": model,
@@ -314,17 +300,14 @@ def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float):
 
     distance_vector = calculate_distance_vector(model, init_model)
 
-    # PAC-Bayes Bound
     def _pacbayes_bound(reference_vec: torch.Tensor, sigma: float) -> float:
         return (reference_vec.norm(p=2) ** 2) / (4 * sigma**2) + math.log(dataset_size / sigma) + 10
 
-    # Magnitude-Aware PAC-Bayes Bound
     def _pacbayes_mag_bound(reference_vec: torch.Tensor, sigma: float) -> float:
         numerator = mag_eps**2 + (sigma**2 + 1) * (reference_vec.norm(p=2) ** 2) / num_params
         denominator = mag_eps**2 + sigma**2 * distance_vector.norm(p=2) ** 2
         return 0.25 * (numerator / denominator).log() + math.log(dataset_size / sigma) + 10
 
-    # Metrics
     measures["PAC_Bayes_Sigma"] = sigma
     measures["PAC_Bayes_Bound"] = _pacbayes_bound(distance_vector, sigma)
     measures["PAC_Bayes_Flatness"] = 1 / sigma**2
@@ -337,44 +320,31 @@ def calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy: float):
 
 
 def calculate_sharpness_metrics(model, dataloader, accuracy: float):
-    """
-    Calculate sharpness metrics based on sharpness sigma.
-
-    Args:
-        model (nn.Module): The PyTorch model.
-        dataloader (DataLoader): DataLoader for the dataset.
-        accuracy (float): Model accuracy.
-        num_params (int): Number of model parameters.
-
-    Returns:
-        Dict[str, Any]: Dictionary of sharpness metrics.
-    """
+    model = model.to(device)
     measures = {}
 
     num_params = sum(p.numel() for p in model.parameters())
 
     # Sharpness Sigma
-    sharpness_sigma = sharpness_sigma_search(model, dataloader, accuracy, target_deviation=0.01)
-
     sigma_search_settings = {
         "model": model,
         "dataloader": dataloader,
         "accuracy": accuracy,
         "target_deviation": 0.01,
+        "learning_rate": 0.01,  # You may need to adjust these hyperparams
     }
 
     mag_eps = 1e-3
     sharpness_sigma = sharpness_sigma_search(**sigma_search_settings)
     sharpness_mag_sigma = sharpness_sigma_search(**sigma_search_settings, magnitude_eps=mag_eps)
 
-    # Sharpness Bound
     def sharpness_bound(sigma: float) -> float:
         return math.log(num_params) * math.sqrt(1 / sigma**2)
 
-    # Metrics
     measures["Sharpness_Sigma"] = sharpness_sigma
     measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
     measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma)
+
     measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
     measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
     measures["Sharpness_MAG_Bound"] = sharpness_bound(sharpness_mag_sigma)
@@ -382,12 +352,11 @@ def calculate_sharpness_metrics(model, dataloader, accuracy: float):
     return measures
 
 
-# Combine PAC-Bayes and Sharpness Metrics
 def calculate_combined_metrics(model, init_model, dataloader, accuracy: float, num_params: int):
-    """
-    Calculate combined PAC-Bayes and Sharpness metrics.
-    """
-    pac_bayes_metrics = calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy, num_params)
-    sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy, num_params)
+    model = model.to(device)
+    init_model = init_model.to(device)
+
+    pac_bayes_metrics = calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy)
+    sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy)
 
     return {**pac_bayes_metrics, **sharpness_metrics}

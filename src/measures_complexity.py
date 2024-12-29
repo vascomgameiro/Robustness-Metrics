@@ -8,12 +8,12 @@ from sklearn.metrics import auc, precision_recall_curve, roc_auc_score, accuracy
 # Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
 
 
-def calculate_top_n_accuracy(y_true, y_pred, n=5, normalize=True):
+def calculate_top_n_accuracy(y_true, probabilities, n=5, normalize=True):
     """
     Calculate Top-N Accuracy for multiclass classification tasks.
     """
-    num_samples = y_pred.shape[0]
-    top_n_predictions = np.argsort(y_pred, axis=1)[:, -n:]
+    num_samples = probabilities.shape[0]
+    top_n_predictions = np.argsort(probabilities, axis=1)[:, -n:]
     matches = np.array([y_true[i] in top_n_predictions[i] for i in range(num_samples)])
     return matches.mean() if normalize else matches.sum()
 
