@@ -54,7 +54,7 @@ def calculate_margin(model, device, val_loader):
     """
     margins = []
     model.eval()
-
+    model.to(device)
     with torch.no_grad():
         for data, target in val_loader:
             data, target = data.to(device), target.to(device)
@@ -201,6 +201,9 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
 
     reparametrize_model(model)
     reparametrize_model(init_model)
+
+    model.to(device)
+    init_model.to(device)
 
     num_samples = len(train_loader.dataset)
     depth = calculate_measure(model, init_model, measure_func=get_hidden_units, operator="sum")

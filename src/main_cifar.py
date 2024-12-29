@@ -1,8 +1,10 @@
-import torch, os,, numpy, copy
-from torch import nn
+import torch, os, itertools, numpy, copy
+from torch import nn, optim
 from data_loader_cifar import dataloader
+from torchvision import datasets, transforms, models
 from pytorch_trainer import PyTorchTrainer
 from vgg import VGG
+import model_constructor as constructor
 import measures_complexity
 import measures_norm
 
@@ -19,26 +21,72 @@ def print_save_measures(dic, statement, path_save):
 
 
 # vg11 from scratch! and adapted to the image size
-# vgg_11_small = VGG(10, 0.5)
+vgg_11_small = VGG(10, 0.5)
 
-# models_to_train = []
-# lrs = [0.01, 0.001, "scheduler"]
-# optimizers = ["sgd", "adam"]
-# for lr in lrs:
-#     for optimizer in optimizers:
-#         model_name = f"vgg_cifar{lr}{optimizer}"
-#         model_info = {"name": model_name, "model": vgg_11_small, "params": {"lr": lr, "optimizer": optimizer}}
-#         models_to_train.append(model_info)
+models_vgg = []
+lrs = [0.01, 0.001, "scheduler"]
+optimizers = ["sgd", "adam"]
+for lr in lrs:
+    for optimizer in optimizers:
+        model_name = f"vgg_cifar{lr}{optimizer}"
+        model_info = {"name": model_name, "model": vgg_11_small, "params": {"lr": lr, "optimizer": optimizer}}
+        models_vgg.append(model_info)
 
-# # print(models_to_train)
-# print(f"list of {len(models_to_train)} models generated!!")
+# print(models_to_train)
+print(f"list of {len(models_vgg)} vgg models generated!!")
 
-# models_to_train = [{"name": , "model": , "params": {"lr": , "optimizer": , }}]
 
-# try this!!
-# decent_conv = constructor.Conv(3, [16, 32, 64])
-# decent_fc = constructor.FC(3, [300, 150, 62], ['ReLU']* 2, dropouts= [0.5, 0.2], in_features=decent_conv.finaldim)
-# decent_model = constructor.CNN(decent_conv, decent_fc, 62, 0.01)
+def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
+    models_to_train = []
+    for depth in depths:
+        fs = filters_sizes[str(depth)]
+        d = drops[str(depth)]
+        configurations = list(itertools.product(fs, optimizers, d, lrs))
+
+        for config in configurations:
+            filters_size, optimizer, drop, lr = config
+
+            nr_filters = filters_size[:depth]
+            conv_layers = constructor.Conv(nr_conv=depth, nr_filters=nr_filters, maxpool_batchnorm=True)
+            fc_size = filters_size[depth:]
+            act_fun = ["ReLU"] * depth
+            dropouts = drop
+            fc_layers = constructor.FC(
+                nr_fc=depth,
+                fc_size=fc_size,
+                act_funs=act_fun,
+                dropouts=dropouts,
+                in_features=conv_layers.finaldim,
+                num_classes=10,
+                batchnorm=True,
+            )
+
+            # Create the model using the CNN constructor
+            model = constructor.CNN(
+                conv_layers=conv_layers, fc_layers=fc_layers, num_classes=10, lr=lr, optimizer=optimizer
+            )
+
+            # Store the model and its parameters in the list
+            model_info = {"name": f"{model.name}", "model": model, "params": {"lr": lr, "optimizer": optimizer}}
+
+            models_to_train.append(model_info)
+
+    return models_to_train
+
+
+depths = [2, 4]
+filters_sizes = {
+    "2": [[8, 16, 160, 80], [32, 64, 320, 160]],
+    "4": [[4, 8, 16, 32, 200, 200, 160, 80], [8, 16, 32, 64, 400, 320, 160, 80]],
+}
+lrs = [0.01, 0.001, "scheduler"]
+drops = {"2": [[0.0, 0.0], [0.5, 0.2]], "4": [[0.0] * 4, [0.5, 0.3, 0.3, 0.2]]}
+optimizers = ["adam", "sgd"]
+
+
+models_to_train = models_iterator(depths, filters_sizes, optimizers, drops, lrs)
+
+print(f"list of {len(models_to_train)} models generated!!")
 
 # attacks_to_test = [
 #   {"name": "FGSM_attack", "model": fgsm_attack, "params": {"eps": 0.1}},
@@ -48,6 +96,7 @@ def print_save_measures(dic, statement, path_save):
 # {'name': 'BIM_attack', 'model': bim_attack, 'params': {'eps': 0.1, 'alpha': 0.01, 'steps': 3}},
 # {'name': 'Square_Attack', 'model': square_attack, 'params': {'max_queries': 10000, 'eps': 0.1}},
 # ]
+
 
 ######
 # queremos:
@@ -61,7 +110,7 @@ def main():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 1 - ir buscar dados e criar dataloader
-    data_dir = "data/cifar/processed"
+    data_dir = "/Users/mariapereira/Desktop/data/cifar/processed"
 
     train_loader, val_loader, test_loader_cifar = dataloader(data_dir)
 
@@ -77,10 +126,7 @@ def main():
         model_name = config["name"]
         optimizer = config["params"]["optimizer"]
         lr = config["params"]["lr"]
-        if lr == "scheduler":
-            scheduler = torch.optim.lr_scheduler.ReducedLROnPlateau(optimizer, mode="min", factor=0.1, patience=2)
-        else:
-            scheduler = None
+
         untrained = copy.deepcopy(model)
         # the current working dir should be the project root: robustness-metrics
         path_to_model = f"models/{model_name}"
@@ -89,10 +135,16 @@ def main():
         path_to_measures = os.path.join(path_to_model, "measures")
         path_to_attacks = os.path.join(path_to_model, "attacks")
 
-        if not os.path.exists(path_to_model):
+        if not os.path.exists(f"{path_to_model}/trained.pt"):
             optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
             optim_cls = optims[optimizer]
-
+            if lr == "scheduler":
+                lr = 0.01
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    optim_cls(model.parameters(), lr=lr), mode="min", factor=0.5, patience=2
+                )
+            else:
+                scheduler = None
             os.makedirs(path_to_model, exist_ok=True)
             trainer = PyTorchTrainer(
                 model=model,
@@ -106,7 +158,7 @@ def main():
 
             torch.save(model.state_dict(), f"{path_to_model}/untrained.pt")
 
-            trainer.train(num_epochs=100, early_stopping_patience=50)
+            trainer.train(num_epochs=100, early_stopping_patience=10)
             model = trainer.best_model
             trainer.save_best_model(f"{path_to_model}/trained.pt")
             trainer.save_plots(path_to_plots)
@@ -166,6 +218,8 @@ def main():
         )
         print_save_measures(measures, "Norm Measures", f"{path_to_measures}/norm_measures.pt")
         print_save_measures(bounds, "Norm measures: bounds", f"{path_to_measures}/norm_bounds.pt")
+
+        # Sharpness Measures - again, nothing to do with test set
 
 
 if __name__ == "__main__":

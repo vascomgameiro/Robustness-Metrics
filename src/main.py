@@ -84,9 +84,10 @@ drops = {"2": [[0.0, 0.0], [0.5, 0.2]], "4": [[0.0] * 4, [0.5, 0.3, 0.3, 0.2]]}
 optimizers = ["adam", "sgd"]
 
 models_to_train = models_iterator(depths, filters_sizes, optimizers, drops, lrs)
-print(models_to_train)
+# print(models_to_train)
 print(f"list of {len(models_to_train)} models generated!!")
 
+# models_to_train = [{"name": , "model": , "params": {"lr": , "optimizer": , }}]
 
 # try this!!
 # decent_conv = constructor.Conv(3, [16, 32, 64])
@@ -120,7 +121,8 @@ models_to_train = [models_to_train[11]]
 
 
 def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 1 - ir buscar dados e criar dataloader
     data_dir = "/Users/joanacorreia/Desktop/AECD/Robustness-Metrics/data"
     path_tiny = os.path.join(data_dir, "tiny.pt")  # diretoria para o tensor
@@ -159,6 +161,7 @@ def main():
                 val_loader=val_loader,
                 criterion=nn.CrossEntropyLoss(),
                 optimizer=optim_cls(model.parameters(), lr=model.lr),
+                device=device,
             )
 
             torch.save(model.state_dict(), f"{path_to_model}/untrained.pt")
@@ -190,7 +193,8 @@ def main():
 
         # 3 - fazer ataques e guardar(cada ataque é guardado dentro da pasta do modelo correspondente, dentro da pasta "attacks")
         #     e avaliar as accuracies
-        all_attacks(model, test_loader_r, attacks_to_test, model_name, path_to_attacks)
+
+        # all_attacks(model, test_loader_r, attacks_to_test,  model_name, path_to_attacks)
 
         # 4 - calcular as métricas!
 
@@ -202,8 +206,8 @@ def main():
         print_save_measures(
             complex_tiny, "Complex measures for Tiny test set", f"{path_to_measures}/complexity_tiny.pt"
         )
-
-        # nos ataques:
+        """
+        #nos ataques:
         for config in attacks_to_test:
             attack_name = config["name"]
             save_path = os.path.join(path_to_attacks, f"{attack_name}_logits_labels.pth")
@@ -222,7 +226,8 @@ def main():
             model, untrained, train_loader, val_loader, nchannels, img_dim, device
         )
         print_save_measures(measures, "Norm Measures", f"{path_to_measures}/norm_measures.pt")
-        print_save_measures(bounds, "Norm measures: bounds", f"{path_to_measures}/norm_bounds.pt")
+        print_save_measures(bounds, "Norm measures: bounds", f"{path_to_measures}/norm_bounds.pt")    
+        """
 
 
 if __name__ == "__main__":

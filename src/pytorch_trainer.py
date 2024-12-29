@@ -44,7 +44,7 @@ class PyTorchTrainer:
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         print(f"Using device: {self.device}")
         self.model = model.to(self.device)
         self.history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
@@ -60,11 +60,9 @@ class PyTorchTrainer:
             train_loss, train_acc = self._train_epoch()
             val_loss, val_acc = self._validate_epoch()
 
-            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            # Adjust learning rate if scheduler is used
+            if self.scheduler:
                 self.scheduler.step(val_loss)
-            else:
-                if self.scheduler:
-                    self.scheduler.step()
 
             # Save history
             self.history["train_loss"].append(train_loss)
@@ -107,10 +105,9 @@ class PyTorchTrainer:
         for images, labels in self.train_loader:
             images, labels = images.to(self.device), labels.to(self.device)
 
+            self.optimizer.zero_grad()
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
-
-            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 

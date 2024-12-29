@@ -44,7 +44,7 @@ class Conv:
         self.name = f"conv{nr_conv}{maxpool_batchnorm}"
         self.layers = nn.ModuleList()
 
-        input_size = 64
+        input_size = 32
         channels = 3  # rgb
 
         for i in range(nr_conv):
@@ -73,7 +73,7 @@ class Conv:
 
 
 class FC:
-    def __init__(self, nr_fc=0, fc_size=[], act_funs=[], dropouts=[], in_features=0, batchnorm=True, num_classes=62):
+    def __init__(self, nr_fc=0, fc_size=[], act_funs=[], dropouts=[], in_features=0, batchnorm=True, num_classes=10):
         """
         nr_fc -> nr of fully connected layers. if =0, then it is just linear
         fc_size -> list with nr of nodes for each layer
