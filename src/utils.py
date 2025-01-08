@@ -19,7 +19,6 @@ def train_save_model(config, device, train_loader, val_loader, test_loader_cifar
     path_to_plots = os.path.join(path_to_model, "plots")
 
     if not os.path.exists(f"{path_to_model}/trained.pt"):
-        print(f"{path_to_model}/trained.pt")
         optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
         optim_cls = optims[optimizer]
         if lr == "scheduler":
