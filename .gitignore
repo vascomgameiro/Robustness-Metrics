@@ -88,6 +88,7 @@ target/
 
 # Exclude virtual environment
 .venv/
+.mps_env/
 
 # Exclude trained models
 /models/

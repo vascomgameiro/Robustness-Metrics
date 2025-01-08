@@ -1,3 +1,5 @@
+import os
+import torch
 import numpy as np
 import pandas as pd
 from sklearn.metrics import auc, precision_recall_curve, roc_auc_score, accuracy_score, log_loss
@@ -91,7 +93,6 @@ def calculate_entropy(probs):
     Calculate entropy for probabilistic predictions.
     """
     return -np.sum(probs * np.log(probs + 1e-10), axis=1)
-
 
 def evaluate_model_metrics(logits, labels, threshold=0.5, beta=1.0):
     """

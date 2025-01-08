@@ -160,15 +160,12 @@ class PyTorchTrainer:
         return 100.0 * correct / total
 
     def save_best_model(self, path="best_model.pt"):
-        # also saving train accuracy for best model
         saved = self.best_model
         model_path = os.path.join(path, "trained.pt")
-        acc_path = os.path.join(path, "final_train_acc")
 
         if saved is not None:
             torch.save(saved.state_dict(), model_path)
             print(f"Best model saved to {path}")
-            np.save(acc_path, np.array([self.final_train_acc]))
         else:
             print("No model was saved because no improvement was detected.")
 
@@ -193,9 +190,16 @@ class PyTorchTrainer:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         np.save(path, predictions)
         print(f"Predictions saved to {path}")
+    
+    def save_accuracies(self, path="accuracies.pt"):
+        path = os.path.join(path, "accuracies.pt")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dic = {"train_acc": self.final_train_acc, "val_acc": self.best_val_acc}
+        torch.save(dic, path)
+        print(f"Accuracies saved to {path}")
 
     def save_plots(self, path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.makedirs(path, exist_ok=True)
         epochs = range(1, len(self.history["train_loss"]) + 1)
 
         # Loss Plot

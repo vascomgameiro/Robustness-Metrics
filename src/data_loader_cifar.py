@@ -28,7 +28,7 @@ class TensorDataset(Dataset):
         return x, y
 
 
-def dataloader(path_cifar, transform = None):
+def dataloader(path_cifar, minibatch_size, transform = None):
     """
     Load the train, val and test cifar tensors
     """
@@ -47,9 +47,9 @@ def dataloader(path_cifar, transform = None):
     test_tiny = TensorDataset(test_cifar_x, test_cifar_y, transform)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
-    test_loader_tiny = DataLoader(test_tiny, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=True)
+    test_loader_tiny = DataLoader(test_tiny, batch_size=minibatch_size, shuffle=False)
 
 
     return train_loader, val_loader, test_loader_tiny

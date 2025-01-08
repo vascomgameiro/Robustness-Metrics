@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import itertools
 
 
 class CNN(nn.Module):
@@ -18,7 +19,7 @@ class CNN(nn.Module):
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
         self.optim = optim
-        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}_{optim}"
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}{optim}"
 
     def forward(self, input):  # input will be of form (Batch size, 3, 64, 64)
         # conv layers
@@ -110,3 +111,42 @@ class FC:
 
         # last layer
         self.layers.append(nn.Linear(in_features=in_features, out_features=num_classes))
+
+
+def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
+    models_to_train = []
+    for depth in depths:
+        fs = filters_sizes[str(depth)]
+        d = drops[str(depth)]
+        configurations = list(itertools.product(fs, optimizers, d, lrs))
+
+        for config in configurations:
+            filters_size, optimizer, drop, lr = config
+
+            nr_filters = filters_size[:depth]
+            conv_layers = Conv(nr_conv=depth, nr_filters=nr_filters, maxpool_batchnorm=True)
+            fc_size = filters_size[depth:]
+            act_fun = ["ReLU"] * depth
+            dropouts = drop
+            fc_layers = FC(
+                nr_fc=depth,
+                fc_size=fc_size,
+                act_funs=act_fun,
+                dropouts=dropouts,
+                in_features=conv_layers.finaldim,
+                num_classes=10,
+                batchnorm=True,
+            )
+
+            # Create the model using the CNN constructor
+            model = CNN(conv_layers=conv_layers, fc_layers=fc_layers, num_classes=10, lr=lr, optim=optimizer)
+
+            # Store the model and its parameters in the list
+            model_info = {"name": f"{model.name}", "model": model, "params": {"lr": lr, "optimizer": optimizer}}
+
+            models_to_train.append(model_info)
+
+    print(f"list of {len(models_to_train)} models generated!!")
+
+    return models_to_train
+
