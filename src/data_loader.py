@@ -22,17 +22,17 @@ class TensorDataset(Dataset):
         return self.features[idx], self.labels[idx]
 
 
-def dataloader(path_tiny, path_r):
+def dataloader(in_distribution_path, out_distribution_path, split=False):
     """
-    Load and split the Tiny ImageNet and ImageNet-R datasets.
+    Load and split the in distribution and out-of-distribution datasets.
     """
     # Load datasets
-    data_tiny = torch.load(path_tiny)
-    data_r = torch.load(path_r)
+    data_id = torch.load(in_distribution_path)
+    data_od = torch.load(out_distribution_path)
 
-    # Split tiny in train, val, test
-    train_x, test_tiny_x, train_y, test_tiny_y = train_test_split(
-        data_tiny[0], data_tiny[1], test_size=0.2, stratify=data_tiny[1], random_state=42
+    # Split id in train, val, test
+    train_x, test_id_x, train_y, test_id_y = train_test_split(
+        data_id[0], data_id[1], test_size=0.2, stratify=data_id[1], random_state=42
     )
     train_x, val_x, train_y, val_y = train_test_split(
         train_x, train_y, test_size=0.1, stratify=train_y, random_state=42
@@ -41,13 +41,13 @@ def dataloader(path_tiny, path_r):
     # Create datasets
     train_dataset = TensorDataset(train_x, train_y)
     val_dataset = TensorDataset(val_x, val_y)
-    test_tiny = TensorDataset(test_tiny_x, test_tiny_y)
-    r_dataset = TensorDataset(data_r[0], data_r[1])
+    test_id = TensorDataset(test_id_x, test_id_y)
+    r_dataset = TensorDataset(data_od[0], data_od[1])
 
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
-    test_loader_tiny = DataLoader(test_tiny, batch_size=32, shuffle=False)
+    test_loader_id = DataLoader(test_id, batch_size=32, shuffle=False)
     test_loader_r = DataLoader(r_dataset, batch_size=32, shuffle=False)
 
-    return train_loader, val_loader, test_loader_tiny, test_loader_r, test_tiny
+    return train_loader, val_loader, test_loader_id, test_loader_r, test_id
