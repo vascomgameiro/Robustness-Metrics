@@ -14,6 +14,7 @@ import random
 # https://drive.google.com/file/d/1_6oUG94d0C3x7x2Vd935a2QqY-OaAWAM/view
 # https://github.com/nitarshan/robust-generalization-measures
 # Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
+# https://github.com/avakanski/Evaluation-of-Complexity-Measures-for-Deep-Learning-Generalization-in-Medical-Image-Analysis/blob/main/codes/complexity_measures.py
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 rng = torch.Generator(device=device.type)
@@ -101,40 +102,41 @@ def clip_perturbed_weights(
     model: nn.Module,
     sigma: float,
     original_weights: list,
+    use_plus_one: bool = False,
 ):
     """
-    Clamp model parameters within [original - (|original|) * sigma, original + (|original|) * sigma].
+    Clamp model parameters within [original - (|original| + ac) * sigma, original + (|original| + ac) * sigma].
 
     Parameters:
     - model: PyTorch model.
     - sigma: Perturbation scale.
     - original_weights: List of original parameter tensors.
+    - use_plus_one: If True, adds 1 to scaling factor.
     """
 
     for original, param in zip(original_weights, model.parameters()):
-        upper = original + (torch.abs(original)) * sigma
-        lower = original - (torch.abs(original)) * sigma
+        ac = torch.ones_like(original) if use_plus_one else torch.zeros_like(original)
+        upper = original + (torch.abs(original) + ac) * sigma
+        lower = original - (torch.abs(original) + ac) * sigma
         param.data.clamp_(lower, upper)
 
 
 def normalize_perturbed_weights(
     perturbed_model: nn.Module,
-    unperturbed_model: nn.Module,
     sigma: float,
+    unperturbed_model: dict,
 ):
     """
     Scale perturbations to ensure total L2 norm does not exceed sigma.
 
     Parameters:
-    - perturbed_model: Model with perturbed weights.
-    - unperturbed_model: Model with original weights.
-    - sigma: Perturbation scale.
+    - perturbed_model: model with perturbed weights.
+    - sigma: Perturbation scale, Maximum allowed L2 norm.
+    - unperturbed_model: model with the original weights.
     """
 
-    # Ensure both models are on the specified device
     unperturbed_model = unperturbed_model.to(device)
     perturbed_model = perturbed_model.to(device)
-
     total_squared_diff = 0.0
     with torch.no_grad():
         for param_orig, param_pert in zip(unperturbed_model.parameters(), perturbed_model.parameters()):
@@ -179,17 +181,17 @@ def gradient_ascent_one_step(
     - average_loss: The average loss over the selected batches.
     """
     model.train()
-    for data, target in dataloader:
-        data, target = data.to(device), target.to(device)
+    data_iter = iter(dataloader)
+    data, target = next(data_iter)
+    data, target = data.to(device), target.to(device)
 
-        # Forward pass
-        output = model(data)
-        loss = nn.functional.cross_entropy(output, target)
+    # Forward pass
+    output = model(data)
+    loss = nn.functional.cross_entropy(output, target)
 
-        # Gradient ascent
-        optimizer.zero_grad()
-        (-loss).backward()
-        optimizer.step()
+    optimizer.zero_grad()
+    (-loss).backward()
+    optimizer.step()
 
     return model
 
@@ -201,15 +203,17 @@ def sharpness_sigma_search(
     target_deviation: float,
     device: torch.device,
     noise_type: Literal["uniform_standard", "uniform_magnitude_aware"],
-    search_depth: int = 50,
-    monte_carlo_iter: int = 5,
+    search_depth: int = 15,
+    monte_carlo_iter: int = 15,
     upper: float = 5.0,
     lower: float = 0.0,
     deviation_tolerance: float = 1e-2,
-    bound_tolerance: float = 1e-2,
+    bound_tolerance: float = 1e-3,
     learning_rate: float = 0.01,
-    ascent_steps: int = 5,
+    ascent_steps: int = 20,
+    use_plus_one: bool = False,
 ) -> float:
+    original_state = deepcopy(model.state_dict())
     model.to(device)
 
     original_weights = [param.detach().clone() for param in model.parameters()]
@@ -217,7 +221,6 @@ def sharpness_sigma_search(
     for sd in range(search_depth):
         sigma = (lower + upper) / 2.0
         min_accuracy = float("inf")
-        early_stoping = False
         print(f"Search depth {sd}, sigma: {sigma}")
 
         for mt in range(monte_carlo_iter):
@@ -247,25 +250,14 @@ def sharpness_sigma_search(
                             break
 
                 min_accuracy = min(min_accuracy, perturbed_accuracy)
-            if early_stoping:
-                break
 
         deviation = abs(min_accuracy - accuracy)
-        print(f"Min accuracy: {min_accuracy}, Deviation: {deviation}")
-        # Check if within tolerance
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
-            print("Desired deviation achieved or search bounds converged.")
             break
-
-        # Dynamic sigma adjustment
-        if deviation > target_deviation:
+        elif deviation > target_deviation:
             upper = sigma
         else:
             lower = sigma
-        print(f"Lower bound: {lower}, Upper bound: {upper}")
-        print("\n")
-
-    print(f"Final sigma: {sigma}")
     return sigma
 
 
@@ -277,28 +269,34 @@ def pac_bayes_sigma_search(
     noise_type: Literal["gaussian_standard", "gaussian_magnitude_aware"],
     target_deviation: float = 0.1,
     search_depth: int = 15,
-    monte_carlo_iter: int = 15,
+    monte_carlo_iter: int = 1,
     upper: float = 5.0,
     lower: float = 0.0,
     deviation_tolerance: float = 1e-3,
     bound_tolerance: float = 1e-3,
 ):
     model = model.to(device)
-    for _ in range(search_depth):
+    for depth in range(search_depth):
         sigma = (lower + upper) / 2
+        print(f"Search Depth {depth}  |  sigma: {sigma}")
         accuracy_samples = []
-        for _ in range(monte_carlo_iter):
+        for mc_iter in range(monte_carlo_iter):
             with apply_perturbation(model, sigma, noise_type):
-                perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
+                perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader, device)
+                deviation_iter = accuracy - perturbed_accuracy
+                print(f"MC iter {mc_iter} : Perturber_acc: {perturbed_accuracy} | Deviation_iter: {deviation_iter}")
                 accuracy_samples.append(perturbed_accuracy)
         deviation = abs(np.mean(accuracy_samples) - accuracy)
 
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
+            print("Breaking condition met.")
             break
         elif deviation > target_deviation:
             upper = sigma
         else:
             lower = sigma
+        print(f"Deviation: {deviation}  |  upper: {upper} |  lower: {lower}")
+
     return sigma
 
 
@@ -341,7 +339,7 @@ def calculate_pac_bayes_metrics(
         model=model,
         dataloader=dataloader,
         accuracy=accuracy,
-        target_deviation=0.1,
+        target_deviation=0.1,  # estava 1% aka 0.01
         device=device,
         noise_type="gaussian_standard",
         upper=5.0,
@@ -350,6 +348,7 @@ def calculate_pac_bayes_metrics(
         bound_tolerance=1e-3,
         search_depth=50,
     )
+    print(f"Starting Mag_sigma search")
     mag_sigma = pac_bayes_sigma_search(
         model=model,
         dataloader=dataloader,
@@ -372,15 +371,15 @@ def calculate_pac_bayes_metrics(
 
     measures["PAC_Bayes_MAG_Sigma"] = mag_sigma
     measures["PAC_Bayes_MAG_Bound"] = pacbayes_mag_bound(
-        distance_vector, mag_sigma, distance_vector, mag_eps, num_params
+        distance_vector, mag_sigma, distance_vector, mag_eps, num_params, dataset_size
     )
     measures["PAC_Bayes_MAG_Flatness"] = 1 / mag_sigma**2
 
     return measures
 
 
-def sharpness_bound(sigma: float, num_params: int) -> float:
-    return math.log(num_params) * math.sqrt(1 / sigma**2)
+# def sharpness_bound(sigma: float, num_params: int) -> float:
+#     return math.log(num_params) * math.sqrt(1 / sigma**2)
 
 
 def calculate_sharpness_metrics(
@@ -431,15 +430,16 @@ def calculate_sharpness_metrics(
         search_depth=50,
     )
 
-    measures["Sharpness_Sigma"] = sharpness_sigma
-    measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
-    measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
+    #     measures["Sharpness_Sigma"] = sharpness_sigma
+    #     measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
+    #     measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
 
     measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
     measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
     measures["Sharpness_MAG_Bound"] = sharpness_bound(sharpness_mag_sigma, num_params)
 
-    return measures
+
+#     return measures
 
 
 def calculate_combined_metrics(
@@ -460,4 +460,5 @@ def calculate_combined_metrics(
     pac_bayes_metrics = calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy, mag_eps, device)
     sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy, device, lr)
 
-    return {**pac_bayes_metrics, **sharpness_metrics}
+
+#     return {**pac_bayes_metrics, **sharpness_metrics}
