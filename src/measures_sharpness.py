@@ -57,12 +57,13 @@ def apply_perturbation(
                 std = sigma
                 noise = torch.normal(mean=0.0, std=std, size=param.size(), generator=rng, device=device)
 
-                # elif noise_type == "uniform_magnitude_aware":
-                #     noise = (torch.rand_like(param) * 2 - 1) * sigma * torch.abs(param)
+            elif noise_type == "uniform_magnitude_aware":
+                unif = torch.distributions.uniform.Uniform(-param.abs() * sigma, param.abs() * sigma)
+                noise = unif.sample()
 
             else:  # "uniform_standard"
-                noise = torch.empty(param.size(), device=device).uniform_(-sigma / 2, sigma / 2, generator=rng)
-            # Apply the noise
+                noise = torch.empty(param.size(), device=device).uniform_(-sigma, sigma, generator=rng)
+
             param.data.add_(noise)
         yield model
     finally:
@@ -141,12 +142,21 @@ def normalize_perturbed_weights(
             total_squared_diff += torch.sum(diff**2).item()
 
     l2_norm = total_squared_diff**0.5
+    print(f"Weights Norm before normalzing {l2_norm}")
     if l2_norm > sigma:
         scaling_factor = sigma / l2_norm
         with torch.no_grad():
             for param_orig, param_pert in zip(unperturbed_model.parameters(), perturbed_model.parameters()):
                 scaled_diff = (param_pert - param_orig) * scaling_factor
                 param_pert.copy_(param_orig + scaled_diff)
+        # Verify norm after normalizing
+        total_squared_diff = 0.0
+        with torch.no_grad():
+            for param_orig, param_pert in zip(unperturbed_model.parameters(), perturbed_model.parameters()):
+                diff = param_pert - param_orig
+                total_squared_diff += torch.sum(diff**2).item()
+
+        print(f"Weights Norm after normalzing {total_squared_diff**0.5}")
 
 
 def gradient_ascent_one_step(
@@ -201,7 +211,7 @@ def sharpness_sigma_search(
     ascent_steps: int = 5,
 ) -> float:
     model.to(device)
-    original_model = deepcopy(model)
+
     original_weights = [param.detach().clone() for param in model.parameters()]
     print(f"Accuracy: {accuracy}")
     for sd in range(search_depth):
@@ -209,24 +219,29 @@ def sharpness_sigma_search(
         min_accuracy = float("inf")
         early_stoping = False
         print(f"Search depth {sd}, sigma: {sigma}")
-        for _ in range(monte_carlo_iter):
+
+        for mt in range(monte_carlo_iter):
+            print(f"Monte Carlo iteration {mt}")
+            # original_model = deepcopy(model)
+
             with apply_perturbation(model, sigma, noise_type=noise_type):
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
                 for step in range(ascent_steps):
+                    print(f"Step: {step}")
                     gradient_ascent_one_step(model, dataloader, optimizer, device)
-                    if noise_type == "uniform_magnitude_aware":
-                        clip_perturbed_weights(model, sigma, original_weights)
-                    else:  # uniform standard
-                        normalize_perturbed_weights(model, original_model, sigma)
+                    clip_perturbed_weights(model, sigma, original_weights)
+                    # if noise_type == "uniform_magnitude_aware":
+                    #     clip_perturbed_weights(model, sigma, original_weights)
+                    # else:  # uniform standard
+                    #     normalize_perturbed_weights(model, original_model, sigma)
 
                     # Check if deviation is too far from target; trigger early stopping
-                    if (step + 1) % 5 == 0 or step == 1:
-                        print(f"Step: {step}")
+                    if (step + 1) % 5 == 0 or step == 1 or step == 0:
                         perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader, device)
                         current_deviation = accuracy - perturbed_accuracy
                         print(f"Deviation: {current_deviation}, Perturbed Accuracy: {perturbed_accuracy}")
 
-                        if current_deviation > target_deviation + deviation_tolerance:
+                        if current_deviation > target_deviation + deviation_tolerance and step != 0:
                             early_stoping = True
                             print("Early stopping triggered.")
                             break
@@ -258,14 +273,14 @@ def pac_bayes_sigma_search(
     model: nn.Module,
     dataloader: DataLoader,
     accuracy: float,
-    target_deviation: float,
     device: str,
     noise_type: Literal["gaussian_standard", "gaussian_magnitude_aware"],
+    target_deviation: float = 0.1,
     search_depth: int = 15,
     monte_carlo_iter: int = 15,
     upper: float = 5.0,
     lower: float = 0.0,
-    deviation_tolerance: float = 1e-2,
+    deviation_tolerance: float = 1e-3,
     bound_tolerance: float = 1e-3,
 ):
     model = model.to(device)
@@ -277,6 +292,7 @@ def pac_bayes_sigma_search(
                 perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader)
                 accuracy_samples.append(perturbed_accuracy)
         deviation = abs(np.mean(accuracy_samples) - accuracy)
+
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
             break
         elif deviation > target_deviation:
@@ -332,6 +348,7 @@ def calculate_pac_bayes_metrics(
         lower=0.0,
         deviation_tolerance=1e-2,
         bound_tolerance=1e-3,
+        search_depth=50,
     )
     mag_sigma = pac_bayes_sigma_search(
         model=model,
@@ -344,6 +361,7 @@ def calculate_pac_bayes_metrics(
         lower=0.0,
         deviation_tolerance=1e-2,
         bound_tolerance=1e-5,
+        search_depth=50,
     )
 
     distance_vector = calculate_distance_vector(model, init_model)
@@ -370,6 +388,7 @@ def calculate_sharpness_metrics(
     dataloader: DataLoader,
     accuracy: float,
     device: torch.device = device,
+    lr: float = 0.001,
 ) -> dict:
     """
     Calculate sharpness metrics.
@@ -385,38 +404,40 @@ def calculate_sharpness_metrics(
         target_deviation=0.1,
         device=device,
         noise_type="uniform_standard",
-        upper=5.0,
+        upper=1.0,
         lower=0.0,
         deviation_tolerance=1e-2,
         bound_tolerance=1e-5,
-        learning_rate=0.0001,
-        ascent_steps=10,
-        monte_carlo_iter=3,
+        learning_rate=lr,
+        ascent_steps=20,
+        monte_carlo_iter=5,
         search_depth=50,
     )
 
-    # sharpness_mag_sigma = sharpness_sigma_search(
-    #     model=model,
-    #     dataloader=dataloader,
-    #     accuracy=accuracy,
-    #     target_deviation=0.1,
-    #     device=device,
-    #     noise_type="uniform_magnitude_aware",
-    #     upper=1.0,
-    #     lower=0.0,
-    #     deviation_tolerance=1e-2,
-    #     bound_tolerance=1e-5,
-    #     learning_rate=0.01,
-    #     ascent_steps=20,
-    # )
+    sharpness_mag_sigma = sharpness_sigma_search(
+        model=model,
+        dataloader=dataloader,
+        accuracy=accuracy,
+        target_deviation=0.1,
+        device=device,
+        noise_type="uniform_magnitude_aware",
+        upper=1.0,
+        lower=0.0,
+        deviation_tolerance=1e-2,
+        bound_tolerance=1e-5,
+        learning_rate=lr,
+        ascent_steps=20,
+        monte_carlo_iter=5,
+        search_depth=50,
+    )
 
     measures["Sharpness_Sigma"] = sharpness_sigma
     measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
     measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
 
-    # measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
-    # measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
-    # measures["Sharpness_MAG_Bound"] = sharpness_bound(sharpness_mag_sigma, num_params)
+    measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
+    measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
+    measures["Sharpness_MAG_Bound"] = sharpness_bound(sharpness_mag_sigma, num_params)
 
     return measures
 
@@ -427,6 +448,7 @@ def calculate_combined_metrics(
     dataloader: DataLoader,
     accuracy: float,
     mag_eps: float = 1e-3,
+    lr: float = 0.001,
     device: torch.device = device,
 ) -> dict:
     """
@@ -436,6 +458,6 @@ def calculate_combined_metrics(
     init_model.to(device)
 
     pac_bayes_metrics = calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy, mag_eps, device)
-    sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy, device)
+    sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy, device, lr)
 
     return {**pac_bayes_metrics, **sharpness_metrics}
