@@ -378,8 +378,8 @@ def calculate_pac_bayes_metrics(
     return measures
 
 
-# def sharpness_bound(sigma: float, num_params: int) -> float:
-#     return math.log(num_params) * math.sqrt(1 / sigma**2)
+def sharpness_bound(sigma: float, num_params: int) -> float:
+    return math.log(num_params) * math.sqrt(1 / sigma**2)
 
 
 def calculate_sharpness_metrics(
@@ -430,9 +430,9 @@ def calculate_sharpness_metrics(
         search_depth=50,
     )
 
-    #     measures["Sharpness_Sigma"] = sharpness_sigma
-    #     measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
-    #     measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
+        measures["Sharpness_Sigma"] = sharpness_sigma
+        measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
+        measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
 
     measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
     measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
