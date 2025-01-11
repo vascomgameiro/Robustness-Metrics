@@ -32,17 +32,17 @@ def dataloader(path_cifar, minibatch_size, transform=None):
     """
     Load CIFAR train, val, and test tensors into DataLoaders.
     """
-    train_x, train_y = torch.load(os.path.join(path, "train_cifar.pt"), weights_only=False)
-    val_x, val_y = torch.load(os.path.join(path, "val_cifar.pt"), weights_only=False)
-    test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
+    train_x, train_y = torch.load(os.path.join(path_cifar, "train_cifar.pt"), weights_only=False)
+    val_x, val_y = torch.load(os.path.join(path_cifar, "val_cifar.pt"), weights_only=False)
+    test_x, test_y = torch.load(os.path.join(path_cifar, "test_cifar.pt"), weights_only=False)
 
     train_ds = TensorDataset(train_x, train_y)
     val_ds = TensorDataset(val_x, val_y)
     test_ds = TensorDataset(test_x, test_y)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=True)
-    test_loader_tiny = DataLoader(test_tiny, batch_size=minibatch_size, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=minibatch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=minibatch_size, shuffle=True)
+    test_loader_tiny = DataLoader(test_ds, batch_size=minibatch_size, shuffle=False)
 
-    return train_dl, val_dl, test_dl
+    return train_loader , val_loader, test_loader_tiny
