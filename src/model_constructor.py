@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import itertools
 
 
@@ -19,7 +17,7 @@ class CNN(nn.Module):
         self.lr = lr
         safe_lr = str(lr).replace(".", "")
         self.optim = optim
-        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}{optim}"
+        self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}_{optim}"
 
     def forward(self, input):  # input will be of form (Batch size, 3, 64, 64)
         # conv layers
@@ -51,7 +49,11 @@ class Conv:
         for i in range(nr_conv):
             # convolution does not alter dimensions
             conv_layer = nn.Conv2d(
-                in_channels=channels, out_channels=nr_filters[i], kernel_size=(3, 3), stride=1, padding="same"
+                in_channels=channels,
+                out_channels=nr_filters[i],
+                kernel_size=(3, 3),
+                stride=1,
+                padding="same",
             )
 
             channels = nr_filters[i]
@@ -74,7 +76,9 @@ class Conv:
 
 
 class FC:
-    def __init__(self, nr_fc=0, fc_size=[], act_funs=[], dropouts=[], in_features=0, batchnorm=True, num_classes=10):
+    def __init__(
+        self, nr_fc=0, fc_size=[], act_funs=[], dropouts=[], in_features=0, batchnorm=True, num_classes=10
+    ):
         """
         nr_fc -> nr of fully connected layers. if =0, then it is just linear
         fc_size -> list with nr of nodes for each layer
@@ -139,14 +143,19 @@ def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
             )
 
             # Create the model using the CNN constructor
-            model = CNN(conv_layers=conv_layers, fc_layers=fc_layers, num_classes=10, lr=lr, optim=optimizer)
+            model = CNN(
+                conv_layers=conv_layers, fc_layers=fc_layers, num_classes=10, lr=lr, optim=optimizer
+            )
 
             # Store the model and its parameters in the list
-            model_info = {"name": f"{model.name}", "model": model, "params": {"lr": lr, "optimizer": optimizer}}
+            model_info = {
+                "name": f"{model.name}",
+                "model": model,
+                "params": {"lr": lr, "optimizer": optimizer},
+            }
 
             models_to_train.append(model_info)
 
     print(f"list of {len(models_to_train)} models generated!!")
 
     return models_to_train
-

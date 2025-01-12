@@ -2,12 +2,10 @@ from contextlib import contextmanager
 from copy import deepcopy
 import torch
 from torch import nn
-from typing import Optional
 import math
 import numpy as np
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from typing import Literal
-import random
 
 # sources:
 # https://github.com/facebookresearch/decodable_information_bottleneck
@@ -24,7 +22,9 @@ rng = torch.Generator(device=device.type)
 def apply_perturbation(
     model: nn.Module,
     sigma: float,
-    noise_type: Literal["gaussian_standard", "gaussian_magnitude_aware", "uniform_standard", "uniform_magnitude_aware"],
+    noise_type: Literal[
+        "gaussian_standard", "gaussian_magnitude_aware", "uniform_standard", "uniform_magnitude_aware"
+    ],
     magnitude_eps: float = 1e-3,
 ):
     """
@@ -211,9 +211,8 @@ def sharpness_sigma_search(
     bound_tolerance: float = 1e-3,
     learning_rate: float = 0.01,
     ascent_steps: int = 20,
-    use_plus_one: bool = False,
 ) -> float:
-    original_state = deepcopy(model.state_dict())
+    # original_state = deepcopy(model.state_dict())
     model.to(device)
 
     original_weights = [param.detach().clone() for param in model.parameters()]
@@ -242,11 +241,8 @@ def sharpness_sigma_search(
                     if (step + 1) % 5 == 0 or step == 1 or step == 0:
                         perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader, device)
                         current_deviation = accuracy - perturbed_accuracy
-                        print(f"Deviation: {current_deviation}, Perturbed Accuracy: {perturbed_accuracy}")
 
                         if current_deviation > target_deviation + deviation_tolerance and step != 0:
-                            early_stoping = True
-                            print("Early stopping triggered.")
                             break
 
                 min_accuracy = min(min_accuracy, perturbed_accuracy)
@@ -284,7 +280,9 @@ def pac_bayes_sigma_search(
             with apply_perturbation(model, sigma, noise_type):
                 perturbed_accuracy = calculate_perturbed_accuracy(model, dataloader, device)
                 deviation_iter = accuracy - perturbed_accuracy
-                print(f"MC iter {mc_iter} : Perturber_acc: {perturbed_accuracy} | Deviation_iter: {deviation_iter}")
+                print(
+                    f"MC iter {mc_iter} : Perturber_acc: {perturbed_accuracy} | Deviation_iter: {deviation_iter}"
+                )
                 accuracy_samples.append(perturbed_accuracy)
         deviation = abs(np.mean(accuracy_samples) - accuracy)
 
@@ -348,7 +346,7 @@ def calculate_pac_bayes_metrics(
         bound_tolerance=1e-3,
         search_depth=50,
     )
-    print(f"Starting Mag_sigma search")
+    print("Starting Mag_sigma search")
     mag_sigma = pac_bayes_sigma_search(
         model=model,
         dataloader=dataloader,
@@ -430,16 +428,15 @@ def calculate_sharpness_metrics(
         search_depth=50,
     )
 
-        measures["Sharpness_Sigma"] = sharpness_sigma
-        measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
-        measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
+    measures["Sharpness_Sigma"] = sharpness_sigma
+    measures["Sharpness_Flatness"] = 1 / sharpness_sigma**2
+    measures["Sharpness_Bound"] = sharpness_bound(sharpness_sigma, num_params)
 
     measures["Sharpness_MAG_Sigma"] = sharpness_mag_sigma
     measures["Sharpness_MAG_Flatness"] = 1 / sharpness_mag_sigma**2
     measures["Sharpness_MAG_Bound"] = sharpness_bound(sharpness_mag_sigma, num_params)
 
-
-#     return measures
+    return measures
 
 
 def calculate_combined_metrics(
@@ -457,8 +454,9 @@ def calculate_combined_metrics(
     model.to(device)
     init_model.to(device)
 
-    pac_bayes_metrics = calculate_pac_bayes_metrics(model, init_model, dataloader, accuracy, mag_eps, device)
+    pac_bayes_metrics = calculate_pac_bayes_metrics(
+        model, init_model, dataloader, accuracy, mag_eps, device
+    )
     sharpness_metrics = calculate_sharpness_metrics(model, dataloader, accuracy, device, lr)
 
-
-#     return {**pac_bayes_metrics, **sharpness_metrics}
+    return {**pac_bayes_metrics, **sharpness_metrics}
