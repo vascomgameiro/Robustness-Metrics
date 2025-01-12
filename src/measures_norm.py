@@ -47,10 +47,9 @@ def calculate_margin(model: nn.Module, device: str, dataloader: DataLoader):
     margins = []
     model.eval()
     model.to(device)
-    dataset_size = len(dataloader)
 
     with torch.no_grad():
-        for data, target in train_loader:
+        for data, target in dataloader:
             data, target = data.to(device), target.to(device)
 
             output = model(data)
@@ -154,16 +153,18 @@ def get_hidden_units(module, init_module):
     """Returns the number of hidden units in a module."""
     return module.weight.size(0)
 
+
 def get_depth(module, init_module):
     return 1
+
 
 def fro_over_spec(module, init_module, p=0):
     """Calculates fro norm of module (if p=0) or fro norm of distance (if p=1), over spectral norm of module"""
     spec = calculate_operator_norm(module, init_module, p=float("Inf"))
-    if p==0:
-        return calculate_norm(module, init_module)/ spec
-    elif p==1:
-        return calculate_distance(module, init_module)/ spec
+    if p == 0:
+        return calculate_norm(module, init_module) / spec
+    elif p == 1:
+        return calculate_distance(module, init_module) / spec
 
 
 def get_num_parameters(module, init_module):
@@ -198,8 +199,8 @@ def calculate_generalization_bounds(
     """
 
     margin = calculate_margin(trained_model, device, train_loader)
-    print('*************************')
-    print(f'Margin: {margin}')
+    print("*************************")
+    print(f"Margin: {margin}")
     model = copy.deepcopy(trained_model)
     init_model = copy.deepcopy(init_model)
 
@@ -210,7 +211,9 @@ def calculate_generalization_bounds(
     init_model.to(device)
 
     num_samples = len(train_loader.dataset)
-    depth = calculate_measure(model, init_model, measure_func=get_depth, operator="sum") # includes output layer
+    depth = calculate_measure(
+        model, init_model, measure_func=get_depth, operator="sum"
+    )  # includes output layer
     num_parameters = calculate_measure(model, init_model, measure_func=get_num_parameters, operator="sum")
 
     measures, bounds = {}, {}
@@ -223,41 +226,48 @@ def calculate_generalization_bounds(
             "operator": "product",
         }
 
-        measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf}) #l=2
-        measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2}) #l=2
-        #measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5})
+        measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf})  # l=2
+        measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2})  # l=2
+        # measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5})
 
         opperator_settings = {
             "model": model,
             "init_model": init_model,
             "measure_func": calculate_operator_norm,
-            "operator": "product"
-            ,
+            "operator": "product",
         }
-        spec_norm = calculate_measure(**opperator_settings, kwargs={"p": float("Inf")}) #l=2
+        spec_norm = calculate_measure(**opperator_settings, kwargs={"p": float("Inf")})  # l=2
         measures["Spectral norm"] = spec_norm
-        #measures["L_1.5 operator norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1.5})
-        measures["Trace norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1}) 
+        # measures["L_1.5 operator norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1.5})
+        measures["Trace norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1})
 
-        #Norms over margin
+        # Norms over margin
         measures["L_{1,inf} norm over margin"] = measures["L_{1,inf} norm"] / margin
-        measures["Frobenius norm over margin"] = measures["Frobenius norm"]/margin
-        measures["Spectral norm over margin"] = spec_norm / margin 
-        measures["Trace norm over margin"] =  measures["Trace norm"] / margin
+        measures["Frobenius norm over margin"] = measures["Frobenius norm"] / margin
+        measures["Spectral norm over margin"] = spec_norm / margin
+        measures["Trace norm over margin"] = measures["Trace norm"] / margin
 
-        #Norms over sqared margin
+        # Norms over sqared margin
         measures["L_{1,inf} norm over squared margin"] = measures["L_{1,inf} norm"] / margin**2
-        measures["Frobenius norm over squared margin"] = measures["Frobenius norm"]/margin**2
+        measures["Frobenius norm over squared margin"] = measures["Frobenius norm"] / margin**2
         measures["Spectral norm over squared margin"] = spec_norm / margin**2
-        measures["Trace norm over squared margin"] =  measures["Trace norm"] / margin**2
+        measures["Trace norm over squared margin"] = measures["Trace norm"] / margin**2
 
-
-        fraction_settings = {"model": model, "init_model": init_model, "measure_func": fro_over_spec, "operator": "sum"}
-        measures["Mu_fro-spec"] =calculate_measure(**fraction_settings, kwargs={"p":1}) #l=2
-        measures["Mu_spec-init-main"] = spec_norm * calculate_measure(**fraction_settings, kwargs={"p":0}) /margin**2 #l=2
-        measures["Mu_spec-origin-main"] = spec_norm * measures["Mu_fro-spec"] /margin**2
-        measures["Mu_sum-of-fro"] = depth* measures["Frobenius norm"]**(1/depth)
-        measures["Mu_sum-of-fro/margin"] = depth* measures["Frobenius norm over squared margin"]**(1/depth)
+        fraction_settings = {
+            "model": model,
+            "init_model": init_model,
+            "measure_func": fro_over_spec,
+            "operator": "sum",
+        }
+        measures["Mu_fro-spec"] = calculate_measure(**fraction_settings, kwargs={"p": 1})  # l=2
+        measures["Mu_spec-init-main"] = (
+            spec_norm * calculate_measure(**fraction_settings, kwargs={"p": 0}) / margin**2
+        )  # l=2
+        measures["Mu_spec-origin-main"] = spec_norm * measures["Mu_fro-spec"] / margin**2
+        measures["Mu_sum-of-fro"] = depth * measures["Frobenius norm"] ** (1 / depth)
+        measures["Mu_sum-of-fro/margin"] = depth * measures["Frobenius norm over squared margin"] ** (
+            1 / depth
+        )
 
         # Enhanced Norm Metrics
         log_product_settings = {
@@ -265,11 +275,11 @@ def calculate_generalization_bounds(
             "init_model": init_model,
             "operator": "log_product",
         }
-        measures["Log Product of Spectral Norms"] = (
-            calculate_measure(measure_func=calculate_operator_norm, **log_product_settings, kwargs={"p": float("Inf")})
+        measures["Log Product of Spectral Norms"] = calculate_measure(
+            measure_func=calculate_operator_norm, **log_product_settings, kwargs={"p": float("Inf")}
         )
-        measures["Log Product of Frobenius Norms"] = (
-            calculate_measure(measure_func=calculate_norm, **log_product_settings, kwargs={"p": 2, "q": 2})
+        measures["Log Product of Frobenius Norms"] = calculate_measure(
+            measure_func=calculate_norm, **log_product_settings, kwargs={"p": 2, "q": 2}
         )
 
         # Distance Metrics
@@ -279,8 +289,12 @@ def calculate_generalization_bounds(
             "measure_func": calculate_distance,
             "operator": "sum",
         }
-        measures["Frobenius Distance"] = calculate_measure(**distance_settings, kwargs={"p": 2, "q": 2}) #l=2
-        measures["Spectral Distance"] = calculate_measure(**distance_settings, kwargs={"p": float("Inf")}) #l=2 
+        measures["Frobenius Distance"] = calculate_measure(
+            **distance_settings, kwargs={"p": 2, "q": 2}
+        )  # l=2
+        measures["Spectral Distance"] = calculate_measure(
+            **distance_settings, kwargs={"p": float("Inf")}
+        )  # l=2
 
         ############################ not seen ###########################
         ################################################################
@@ -288,7 +302,7 @@ def calculate_generalization_bounds(
         input_size = (nchannels, img_dim, img_dim)
         measures["Mu path-norm"] = calculate_path_norm(model, device, p=2, input_size=input_size)
         measures["Mu path-norm/margin"] = measures["Mu path-norm"] / margin**2
-        #measures["L1_path norm"] = calculate_path_norm(model, device, p=1, input_size=input_size) / margin**2
+        # measures["L1_path norm"] = calculate_path_norm(model, device, p=1, input_size=input_size) / margin**2
 
         # Bound Calculations
         alpha = math.sqrt(depth + math.log(nchannels * img_dim**2))
