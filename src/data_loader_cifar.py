@@ -32,9 +32,9 @@ def dataloader(path: str, minibatch_size: int):
     """
     Load CIFAR train, val, and test tensors into DataLoaders.
     """
-    train_x, train_y = torch.load(os.path.join(path, "train_cifar.pt"), weights_only=False)
-    val_x, val_y = torch.load(os.path.join(path, "val_cifar.pt"), weights_only=False)
-    test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
+    train_x, train_y = torch.load(os.path.join(path_cifar, "train_cifar.pt"), weights_only=False)
+    val_x, val_y = torch.load(os.path.join(path_cifar, "val_cifar.pt"), weights_only=False)
+    test_x, test_y = torch.load(os.path.join(path_cifar, "test_cifar.pt"), weights_only=False)
 
     train_dataset = TensorDataset(train_x, train_y)
     val_dataset = TensorDataset(val_x, val_y)
