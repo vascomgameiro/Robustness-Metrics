@@ -1,6 +1,6 @@
 import torch, os, itertools, numpy, copy, torchattacks
 from torch import nn, optim
-from data_loader_cifar import dataloader
+from src.data_loader import dataloader
 from torchvision import datasets, transforms, models
 from pytorch_trainer import PyTorchTrainer
 from model_constructor import models_iterator
@@ -61,12 +61,11 @@ def main():
         complex_cifar = measures_complexity.evaluate_model_metrics(logits_cifar, labels_cifar)
         print_save_measures(complex_cifar, "Complex measures for Cifar test set", f"{path_to_measures}/complexity_cifar.pt")
 
-        model.eval()
+        model.eval()# Norm Measures
         # Norm Measures
         print(f'Train Accuracy: {train_accuracy}')
-        measures, bounds = measures_norm.calculate_generalization_bounds(model, untrained, train_loader, val_loader, nchannels, img_dim, device)
+        measures = measures_norm.calculate_generalization_bounds(model, untrained, train_loader, val_loader, nchannels, img_dim, device)
         print_save_measures(measures, "Norm Measures", f"{path_to_measures}/norm_measures.pt")
-        print_save_measures(bounds, "Norm measures: bounds", f"{path_to_measures}/norm_bounds.pt")
 
         # Sharpness Measures
         #if not os.path.exists(f"{path_to_measures}/sharpness.pt"):

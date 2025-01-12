@@ -47,10 +47,9 @@ def calculate_margin(model: nn.Module, device: str, dataloader: DataLoader):
     margins = []
     model.eval()
     model.to(device)
-    dataset_size = len(dataloader)
 
     with torch.no_grad():
-        for data, target in train_loader:
+        for data, target in dataloader:
             data, target = data.to(device), target.to(device)
 
             output = model(data)
