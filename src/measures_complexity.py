@@ -131,7 +131,7 @@ def evaluate_model_metrics(logits, labels, threshold=0.5, beta=1.0):
     # Cross-entropy loss
     cross_entropy_loss = -np.mean(np.log(probabilities[np.arange(len(labels)), labels] + 1e-10))
 
-    # Compile metrics into a dictionary
+    # Compile metrics into a dictionary!
     return {
         "Accuracy": accuracy,
         "Top-5 Accuracy": top_5_accuracy,

@@ -189,7 +189,7 @@ def calculate_path_norm(model, device, p=2.0, input_size=(3, 64, 64)):
     return tmp_model.forward(data_ones).sum().item() ** (1 / p)
 
 
-# Main Calculation
+# Main Calculation!
 def calculate_generalization_bounds(
     trained_model, init_model, train_loader, val_loader, nchannels, img_dim, device="cpu"
 ):
