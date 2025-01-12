@@ -40,7 +40,7 @@ def reparametrize_model(model, previous_layer = None):
     return previous_layer
 
 
-def calculate_margin(model, device, val_loader):
+def calculate_margin(model, device, train_loader):
     """
     Calculate the margin for a model on a validation dataset.
 
@@ -56,7 +56,7 @@ def calculate_margin(model, device, val_loader):
     model.eval()
     model.to(device)
     with torch.no_grad():
-        for data, target in val_loader:
+        for data, target in train_loader:
             data, target = data.to(device), target.to(device)
 
             output = model(data)
@@ -66,8 +66,7 @@ def calculate_margin(model, device, val_loader):
             ).max(dim=1)
 
             margins.extend((correct_logits - max_other_logits).tolist())
-
-    val_margin = np.percentile(margins, 5)
+    val_margin = np.percentile(margins, 10)
     return val_margin
 
 
@@ -112,16 +111,16 @@ def _reset_batchnorm_parameters(batchnorm_layer):
 
 
 # Measure Calculation
-def calculate_measure(model, init_model, measure_func, operator, kwargs=None, p=1.0):
+def calculate_measure(model, init_model, measure_func, operator, kwargs=None, l=1.0):
     """
     Recursively calculates measures based on the specified operator ('product', 'norm', etc.)
     across model layers.
     """
     kwargs = kwargs or {}
     if operator == "product":
-        return math.exp(calculate_measure(model, init_model, measure_func, "log_product", kwargs, p))
+        return math.exp(calculate_measure(model, init_model, measure_func, "log_product", kwargs, l))
     elif operator == "norm":
-        return calculate_measure(model, init_model, measure_func, "sum", kwargs, p) ** (1 / p)
+        return calculate_measure(model, init_model, measure_func, "sum", kwargs, l) ** (1 / l)
     else:
         measure_value = 0
         for child, init_child in zip(model.children(), init_model.children()):
@@ -130,11 +129,11 @@ def calculate_measure(model, init_model, measure_func, operator, kwargs=None, p=
                 if operator == "log_product":
                     measure_value += math.log(measure_func(child, init_child, **kwargs))
                 elif operator == "sum":
-                    measure_value += measure_func(child, init_child, **kwargs) ** p
+                    measure_value += measure_func(child, init_child, **kwargs) ** l
                 elif operator == "max":
                     measure_value = max(measure_value, measure_func(child, init_child, **kwargs))
             else:
-                measure_value += calculate_measure(child, init_child, measure_func, operator, kwargs, p)
+                measure_value += calculate_measure(child, init_child, measure_func, operator, kwargs, l)
     return measure_value
 
 
@@ -169,6 +168,17 @@ def get_hidden_units(module, init_module):
     """Returns the number of hidden units in a module."""
     return module.weight.size(0)
 
+def get_depth(module, init_module):
+    return 1
+
+def fro_over_spec(module, init_module, p=0):
+    """Calculates fro norm of module (if p=0) or fro norm of distance (if p=1), over spectral norm of module"""
+    spec = calculate_operator_norm(module, init_module, p=float("Inf"))
+    if p==0:
+        return calculate_norm(module, init_module)/ spec
+    elif p==1:
+        return calculate_distance(module, init_module)/ spec
+
 
 def get_num_parameters(module, init_module):
     """Calculates the number of parameters in a module."""
@@ -194,8 +204,9 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
     Calculates various generalization bounds and measures for a model.
     """
 
-    margin = calculate_margin(trained_model, device, val_loader)
-
+    margin = calculate_margin(trained_model, device, train_loader)
+    print('*************************')
+    print(f'Margin: {margin}')
     model = copy.deepcopy(trained_model)
     init_model = copy.deepcopy(init_model)
 
@@ -206,28 +217,49 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
     init_model.to(device)
 
     num_samples = len(train_loader.dataset)
-    depth = calculate_measure(model, init_model, measure_func=get_hidden_units, operator="sum")
+    depth = calculate_measure(model, init_model, measure_func=get_depth, operator="sum") # includes output layer
     num_parameters = calculate_measure(model, init_model, measure_func=get_num_parameters, operator="sum")
 
     measures, bounds = {}, {}
     with torch.no_grad():
-        # Norm-based Measures
+        # Norm-based Measures 
         norm_settings = {"model": model, "init_model": init_model, "measure_func": calculate_norm, "operator": "product"}
 
-        measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf}) / margin
-        measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2}) / margin
-        measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5}) / margin
+        measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf}) #l=2
+        measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2}) #l=2
+        #measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5})
 
         opperator_settings = {
             "model": model,
             "init_model": init_model,
             "measure_func": calculate_operator_norm,
-            "operator": "product",
+            "operator": "product"
+            ,
         }
+        spec_norm = calculate_measure(**opperator_settings, kwargs={"p": float("Inf")}) #l=2
+        measures["Spectral norm"] = spec_norm
+        #measures["L_1.5 operator norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1.5})
+        measures["Trace norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1}) 
 
-        measures["Spectral norm"] = calculate_measure(**opperator_settings, kwargs={"p": float("Inf")}) / margin
-        measures["L_1.5 operator norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1.5}) / margin
-        measures["Trace norm"] = calculate_measure(**opperator_settings, kwargs={"p": 1}) / margin
+        #Norms over margin
+        measures["L_{1,inf} norm over margin"] = measures["L_{1,inf} norm"] / margin
+        measures["Frobenius norm over margin"] = measures["Frobenius norm"]/margin
+        measures["Spectral norm over margin"] = spec_norm / margin 
+        measures["Trace norm over margin"] =  measures["Trace norm"] / margin
+
+        #Norms over sqared margin
+        measures["L_{1,inf} norm over squared margin"] = measures["L_{1,inf} norm"] / margin**2
+        measures["Frobenius norm over squared margin"] = measures["Frobenius norm"]/margin**2
+        measures["Spectral norm over squared margin"] = spec_norm / margin**2
+        measures["Trace norm over squared margin"] =  measures["Trace norm"] / margin**2
+
+
+        fraction_settings = {"model": model, "init_model": init_model, "measure_func": fro_over_spec, "operator": "sum"}
+        measures["Mu_fro-spec"] =calculate_measure(**fraction_settings, kwargs={"p":1}) #l=2
+        measures["Mu_spec-init-main"] = spec_norm * calculate_measure(**fraction_settings, kwargs={"p":0}) /margin**2 #l=2
+        measures["Mu_spec-origin-main"] = spec_norm * measures["Mu_fro-spec"] /margin**2
+        measures["Mu_sum-of-fro"] = depth* measures["Frobenius norm"]**(1/depth)
+        measures["Mu_sum-of-fro/margin"] = depth* measures["Frobenius norm over squared margin"]**(1/depth)
 
         # Enhanced Norm Metrics
         log_product_settings = {
@@ -237,12 +269,10 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
         }
         measures["Log Product of Spectral Norms"] = (
             calculate_measure(measure_func=calculate_operator_norm, **log_product_settings, kwargs={"p": float("Inf")})
-            / margin
         )
         measures["Log Product of Frobenius Norms"] = (
-            calculate_measure(measure_func=calculate_norm, **log_product_settings, kwargs={"p": 2, "q": 2}) / margin
+            calculate_measure(measure_func=calculate_norm, **log_product_settings, kwargs={"p": 2, "q": 2})
         )
-        measures["Frobenius over Spectral Norm"] = measures["Frobenius norm"] / measures["Spectral norm"]
 
         # Distance Metrics
         distance_settings = {
@@ -251,20 +281,21 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
             "measure_func": calculate_distance,
             "operator": "sum",
         }
-        measures["Frobenius Distance"] = calculate_measure(**distance_settings, kwargs={"p": 2, "q": 2}) / margin
-        measures["Spectral Distance"] = calculate_measure(**distance_settings, kwargs={"p": float("Inf")}) / margin
+        measures["Frobenius Distance"] = calculate_measure(**distance_settings, kwargs={"p": 2, "q": 2}) #l=2
+        measures["Spectral Distance"] = calculate_measure(**distance_settings, kwargs={"p": float("Inf")}) #l=2 
 
+        ############################ not seen ###########################
+        ################################################################
         # Path Norms
         input_size = (nchannels, img_dim, img_dim)
-        measures["L1_path norm"] = calculate_path_norm(model, device, p=1, input_size=input_size) / margin
-        measures["L1.5_path norm"] = calculate_path_norm(model, device, p=1.5, input_size=input_size) / margin
-        measures["L2_path norm"] = calculate_path_norm(model, device, p=2, input_size=input_size) / margin
+        measures["Mu path-norm"] = calculate_path_norm(model, device, p=2, input_size=input_size)
+        measures["Mu path-norm/margin"] = measures["Mu path-norm"] / margin**2
+        #measures["L1_path norm"] = calculate_path_norm(model, device, p=1, input_size=input_size) / margin**2
 
         # Bound Calculations
         alpha = math.sqrt(depth + math.log(nchannels * img_dim**2))
         bounds["L1_max Bound"] = alpha * measures["L_{1,inf} norm"] / math.sqrt(num_samples)
         bounds["Frobenius Bound"] = alpha * measures["Frobenius norm"] / math.sqrt(num_samples)
-        bounds["L_{3,1.5} Bound"] = alpha * measures["L_{3,1.5} norm"] / (num_samples ** (1 / 3))
 
         # Enhanced Bounds
         beta = math.log(num_samples) * math.log(num_parameters)
@@ -274,10 +305,10 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
             "measure_func": calculate_hidden_operator_norm,
             "operator": "norm",
         }
-        ratio = calculate_measure(**ratio_settings, p=2 / 3, kwargs={"p": 2, "q": 1, "p_op": np.inf})
-        bounds["Spec_L2_1 Bound"] = beta * measures["Spectral norm"] * ratio / math.sqrt(num_samples)
-        ratio = calculate_measure(**ratio_settings, kwargs={"p": 2, "q": 2, "p_op": np.inf}, p=2)
-        bounds["Spec_Fro Bound"] = beta * measures["Spectral norm"] * ratio / math.sqrt(num_parameters)
+        ratio = calculate_measure(**ratio_settings, l=2 / 3, kwargs={"p": 2, "q": 1, "p_op": np.inf})
+        bounds["Spec_L2_1 Bound"] = beta * spec_norm * ratio / math.sqrt(num_samples)
+        ratio = calculate_measure(**ratio_settings, kwargs={"p": 2, "q": 2, "p_op": np.inf}, l=2)
+        bounds["Spec_Fro Bound"] = beta * spec_norm * ratio / math.sqrt(num_parameters)
 
         # Flatness-Based Bounds
         sigma = calculate_path_norm(model, device, p=2, input_size=input_size)

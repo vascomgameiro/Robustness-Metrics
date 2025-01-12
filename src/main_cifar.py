@@ -53,7 +53,7 @@ def main():
         path_to_attacks = os.path.join(path_to_model, "attacks")
 
         untrained, model, train_accuracy, logits_cifar, labels_cifar = train_save_model(config, device, train_loader, val_loader, test_loader_cifar)
-
+        
         # 3 - attack dataset, make prediction and save logits
         all_attacks(model, test_loader_cifar, attacks_to_test,  model_name, path_to_attacks)
 
@@ -63,6 +63,7 @@ def main():
 
         model.eval()
         # Norm Measures
+        print(f'Train Accuracy: {train_accuracy}')
         measures, bounds = measures_norm.calculate_generalization_bounds(model, untrained, train_loader, val_loader, nchannels, img_dim, device)
         print_save_measures(measures, "Norm Measures", f"{path_to_measures}/norm_measures.pt")
         print_save_measures(bounds, "Norm measures: bounds", f"{path_to_measures}/norm_bounds.pt")
