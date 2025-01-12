@@ -1,6 +1,6 @@
-import torch, os
+import torch
+import os
 from torch.utils.data import Dataset, DataLoader
-from sklearn.model_selection import train_test_split
 
 
 class TensorDataset(Dataset):
@@ -28,30 +28,21 @@ class TensorDataset(Dataset):
         return x, y
 
 
-def dataloader(path_cifar, minibatch_size, transform = None):
+def dataloader(path_cifar, minibatch_size, transform=None):
     """
-    Load the train, val and test cifar tensors
+    Load CIFAR train, val, and test tensors into DataLoaders.
     """
-    # Load datasets
-    path_train = os.path.join(path_cifar, "train_cifar.pt")
-    path_val = os.path.join(path_cifar, "val_cifar.pt")
-    path_test = os.path.join(path_cifar, "test_cifar.pt")
+    train_x, train_y = torch.load(os.path.join(path_cifar, "train_cifar.pt"), weights_only=False)
+    val_x, val_y = torch.load(os.path.join(path_cifar, "val_cifar.pt"), weights_only=False)
+    test_x, test_y = torch.load(os.path.join(path_cifar, "test_cifar.pt"), weights_only=False)
 
-    train_x, train_y = torch.load(path_train, weights_only=False)
-    val_x, val_y = torch.load(path_val, weights_only=False)
-    test_cifar_x, test_cifar_y = torch.load(path_test, weights_only=False)
-
-    # Create datasets
-    train_dataset = TensorDataset(train_x, train_y, transform)
-    val_dataset = TensorDataset(val_x, val_y, transform)
-    test_tiny = TensorDataset(test_cifar_x, test_cifar_y, transform)
+    train_ds = TensorDataset(train_x, train_y)
+    val_ds = TensorDataset(val_x, val_y)
+    test_ds = TensorDataset(test_x, test_y)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=True)
-    test_loader_tiny = DataLoader(test_tiny, batch_size=minibatch_size, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=minibatch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=minibatch_size, shuffle=True)
+    test_loader_tiny = DataLoader(test_ds, batch_size=minibatch_size, shuffle=False)
 
-
-    return train_loader, val_loader, test_loader_tiny
-
-
+    return train_loader , val_loader, test_loader_tiny

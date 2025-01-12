@@ -3,13 +3,14 @@ import math
 import numpy as np
 import torch
 
-# Sources: 
+# Sources:
 # https://github.com/bneyshabur/generalization-bounds
 # https://github.com/nitarshan/robust-generalization-measures
 # Fantastic Generalization Measures and Where to Find Them: arXiv:1912.02178
 
+
 # Reparametrization
-def reparametrize_model(model, previous_layer = None):
+def reparametrize_model(model, previous_layer=None):
     """
     Reparametrize the model by adjusting BatchNorm parameters and updating
     weights and biases of preceding layers.
@@ -40,21 +41,12 @@ def reparametrize_model(model, previous_layer = None):
     return previous_layer
 
 
-def calculate_margin(model, device, train_loader):
-    """
-    Calculate the margin for a model on a validation dataset.
-
-    Args:
-        model (torch.nn.Module): The PyTorch model to evaluate.
-        device (torch.device): Device (CPU or GPU) for computation.
-        val_loader (torch.utils.data.DataLoader): Validation data loader.
-
-    Returns:
-        float: The 5th percentile of margins.
-    """
+def calculate_margin(model, device, dataloader):
     margins = []
     model.eval()
     model.to(device)
+    dataset_size = len(dataloader)
+
     with torch.no_grad():
         for data, target in train_loader:
             data, target = data.to(device), target.to(device)
@@ -197,9 +189,10 @@ def calculate_path_norm(model, device, p=2.0, input_size=(3, 64, 64)):
     return tmp_model.forward(data_ones).sum().item() ** (1 / p)
 
 
-
 # Main Calculation
-def calculate_generalization_bounds(trained_model, init_model, train_loader, val_loader, nchannels, img_dim, device="cpu"):
+def calculate_generalization_bounds(
+    trained_model, init_model, train_loader, val_loader, nchannels, img_dim, device="cpu"
+):
     """
     Calculates various generalization bounds and measures for a model.
     """
@@ -222,8 +215,13 @@ def calculate_generalization_bounds(trained_model, init_model, train_loader, val
 
     measures, bounds = {}, {}
     with torch.no_grad():
-        # Norm-based Measures 
-        norm_settings = {"model": model, "init_model": init_model, "measure_func": calculate_norm, "operator": "product"}
+        # Norm-based Measures
+        norm_settings = {
+            "model": model,
+            "init_model": init_model,
+            "measure_func": calculate_norm,
+            "operator": "product",
+        }
 
         measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf}) #l=2
         measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2}) #l=2
