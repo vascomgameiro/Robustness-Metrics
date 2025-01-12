@@ -1,9 +1,11 @@
 import torch
 import os
+import os
 from torch.utils.data import Dataset, DataLoader
 
 
 class TensorDataset(Dataset):
+    def __init__(self, features, labels, transform=None):
     def __init__(self, features, labels, transform=None):
         """
         Initialize the TensorDataset with features and labels.
@@ -15,11 +17,18 @@ class TensorDataset(Dataset):
         self.features = features
         self.labels = labels
         self.transform = transform
+        self.transform = transform
 
     def __len__(self):
         return len(self.labels)
 
     def __getitem__(self, idx):
+        x = self.features[idx]
+        y = self.labels[idx]
+
+        if self.transform:
+            x = self.transform(x)
+        return x, y
         x = self.features[idx]
         y = self.labels[idx]
 
