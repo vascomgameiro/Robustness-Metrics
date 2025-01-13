@@ -47,8 +47,6 @@ def main():
 
     load_dotenv()
     DATA_DIR = os.getenv("DATA_DIR")
-    ATTACKS_DIR = os.getenv("ATTACKS_DIR")
-
     train_loader, val_loader, test_loader_cifar = dataloader(path_cifar=DATA_DIR, minibatch_size=32)
 
     images, ys = next(iter(train_loader))
@@ -102,15 +100,15 @@ def main():
             test_loader_10c5, model, model_name, "test_10c5", device
         )
 
-        logits_fgdsa, labels_fgdsa = load_logits_and_labels_attacks("FGDSA", model_name, ATTACKS_DIR)
-        logits_fgsm, labels_fgsm = load_logits_and_labels_attacks("FGSM", model_name, ATTACKS_DIR)
-        logits_pgd, labels_pgd = load_logits_and_labels_attacks("PGD", model_name, ATTACKS_DIR)
-        logits_cw, labels_cw = load_logits_and_labels_attacks("CW", model_name, ATTACKS_DIR)
+        logits_fgdsa, labels_fgdsa = load_logits_and_labels_attacks("FGDSA", model_name, path_to_attacks)
+        logits_fgsm, labels_fgsm = load_logits_and_labels_attacks("FGSM", model_name, path_to_attacks)
+        logits_pgd, labels_pgd = load_logits_and_labels_attacks("PGD", model_name, path_to_attacks)
+        logits_cw, labels_cw = load_logits_and_labels_attacks("CW", model_name, path_to_attacks)
         logits_deepfool, labels_deepfool = load_logits_and_labels_attacks(
-            "DeepFool", model_name, ATTACKS_DIR
+            "DeepFool", model_name, path_to_attacks
         )
-        logits_bim, labels_bim = load_logits_and_labels_attacks("BIM", model_name, ATTACKS_DIR)
-        logits_square, labels_square = load_logits_and_labels_attacks("Square", model_name, ATTACKS_DIR)
+        logits_bim, labels_bim = load_logits_and_labels_attacks("BIM", model_name, path_to_attacks)
+        logits_square, labels_square = load_logits_and_labels_attacks("Square", model_name, path_to_attacks)
 
         datasets = {
             "cifar": (logits_cifar, labels_cifar),
