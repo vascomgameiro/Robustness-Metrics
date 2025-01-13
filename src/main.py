@@ -57,6 +57,7 @@ def main():
 
     for config in models_to_train:
         # 2 - train model, save it and the logits
+
         model = config["model"]
         model_name = config["name"]
         path_to_model = f"models/{model_name}"

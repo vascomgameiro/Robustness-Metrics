@@ -28,21 +28,29 @@ class TensorDataset(Dataset):
         return x, y
 
 
-def dataloader(path: str, minibatch_size: int):
+def dataloader(path: str, minibatch_size: int, dataset=None):
     """
     Load CIFAR train, val, and test tensors into DataLoaders.
     """
-    train_x, train_y = torch.load(os.path.join(path, "train_cifar.pt"), weights_only=False)
-    val_x, val_y = torch.load(os.path.join(path, "val_cifar.pt"), weights_only=False)
-    test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
+    if dataset is None:
+        train_x, train_y = torch.load(os.path.join(path, "train_cifar.pt"), weights_only=False)
+        val_x, val_y = torch.load(os.path.join(path, "val_cifar.pt"), weights_only=False)
+        test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
 
-    train_dataset = TensorDataset(train_x, train_y)
-    val_dataset = TensorDataset(val_x, val_y)
-    test_dataset = TensorDataset(test_x, test_y)
+        train_dataset = TensorDataset(train_x, train_y)
+        val_dataset = TensorDataset(val_x, val_y)
+        test_dataset = TensorDataset(test_x, test_y)
 
-    # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
+        # Create DataLoaders
+        train_loader = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
 
-    return train_loader, val_loader, test_loader
+        return train_loader, val_loader, test_loader
+
+    else:
+        test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
+        test_dataset = TensorDataset(test_x, test_y)
+        test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
+
+        return test_loader
