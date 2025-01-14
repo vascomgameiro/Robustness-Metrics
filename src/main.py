@@ -6,7 +6,7 @@ from pytorch_trainer import PyTorchTrainer
 from model_constructor import models_iterator
 from attack_acc import all_attacks
 from utils import train_save_model, print_save_measures
-import measures_complexity
+import measures_performance
 import measures_norm
 import measures_sharpness
 import numpy as np
@@ -58,7 +58,7 @@ def main():
         all_attacks(model, test_loader_cifar, attacks_to_test,  model_name, path_to_attacks)
 
         # 4 - calculate metrics
-        complex_cifar = measures_complexity.evaluate_model_metrics(logits_cifar, labels_cifar)
+        complex_cifar = measures_performance.evaluate_model_metrics(logits_cifar, labels_cifar)
         print_save_measures(complex_cifar, "Complex measures for Cifar test set", f"{path_to_measures}/complexity_cifar.pt")
 
         model.eval()# Norm Measures
