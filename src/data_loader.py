@@ -1,6 +1,5 @@
 import torch
 import os
-import os
 from torch.utils.data import Dataset, DataLoader
 
 
@@ -16,7 +15,6 @@ class TensorDataset(Dataset):
         self.features = features
         self.labels = labels
         self.transform = transform
-        self.transform = transform
 
     def __len__(self):
         return len(self.labels)
@@ -25,25 +23,13 @@ class TensorDataset(Dataset):
         x = self.features[idx]
         y = self.labels[idx]
 
-        if self.transform:
-            x = self.transform(x)
-        return x, y
 
 
-
-def dataloader(path: str, minibatch_size: int, dataset = None):
+def dataloader(path: str, minibatch_size: int, dataset=None):
     """
     Load CIFAR train, val, and test tensors into DataLoaders.
     """
     if dataset is None:
-
-        test_x, test_y = torch.load(path, weights_only=False)
-        test_dataset = TensorDataset(test_x, test_y)
-        test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
-
-        return test_loader
-
-    else:
         train_x, train_y = torch.load(os.path.join(path, "train_cifar.pt"), weights_only=False)
         val_x, val_y = torch.load(os.path.join(path, "val_cifar.pt"), weights_only=False)
         test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
@@ -58,4 +44,10 @@ def dataloader(path: str, minibatch_size: int, dataset = None):
         test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
 
         return train_loader, val_loader, test_loader
-   
+
+    else:
+        test_x, test_y = torch.load(os.path.join(path, "test_cifar.pt"), weights_only=False)
+        test_dataset = TensorDataset(test_x, test_y)
+        test_loader = DataLoader(test_dataset, batch_size=minibatch_size, shuffle=False)
+
+        return test_loader
