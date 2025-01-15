@@ -1,7 +1,6 @@
 import torch
 import os
 import copy
-import numpy
 from torch import nn
 from pytorch_trainer import PyTorchTrainer
 from torch.utils.data import DataLoader
@@ -9,7 +8,7 @@ import numpy as np
 from pathlib import Path
 
 
-def train_save_model(config, device, train_loader, val_loader, test_loader_cifar):
+def train_save_model(config, device, train_loader, val_loader):
     model = config["model"]
     model_name = config["name"]
     optimizer = config["params"]["optimizer"]
@@ -18,7 +17,6 @@ def train_save_model(config, device, train_loader, val_loader, test_loader_cifar
     untrained = copy.deepcopy(model)
     # the current working dir should be the project root: robustness-metrics
     path_to_model = f"models/{model_name}"
-    path_to_predictions = os.path.join(path_to_model, "predictions")
     path_to_plots = os.path.join(path_to_model, "plots")
 
     if not os.path.exists(f"{path_to_model}/trained.pt"):
@@ -47,13 +45,8 @@ def train_save_model(config, device, train_loader, val_loader, test_loader_cifar
         trainer.train(num_epochs=100, early_stopping_patience=10)
         model = trainer.best_model
         print(next(model.parameters()).device)
-        train_accuracy = trainer.final_train_acc
         trainer.save_best_model(path_to_model)
         trainer.save_plots(path_to_plots)
-
-        logits_cifar, labels_cifar = trainer.predict(test_loader_cifar)
-        trainer.save_predictions(logits_cifar, f"{path_to_predictions}/cifar.npy")
-        trainer.save_accuracies(path_to_predictions)
 
     else:
         print(f"Model {model_name} is already trained. Skipping training step.")
@@ -64,15 +57,7 @@ def train_save_model(config, device, train_loader, val_loader, test_loader_cifar
         model = model.to(device)
         untrained = untrained.to(device)
 
-        accuracies_dic = torch.load(f"{path_to_predictions}/accuracies.pt", weights_only=False)
-        train_accuracy = accuracies_dic["train_acc"]
-
-        logits_cifar = numpy.load(f"{path_to_predictions}/cifar.npy")
-        labels_cifar = []
-        for _, labels in test_loader_cifar:
-            labels_cifar.extend(labels.numpy())
-
-    return untrained, model, train_accuracy, logits_cifar, labels_cifar
+    return untrained, model
 
 
 def get_logits_and_labels(
@@ -97,21 +82,29 @@ def get_logits_and_labels(
     Returns:
         tuple[np.ndarray, torch.Tensor]: Logits and labels.
     """
-    model.to(device).eval()
-    logits, labels = [], []
-
-    with torch.no_grad():
-        for data, label in dataloader:
-            data, label = data.to(device), label.to(device)
-            logits.append(model(data).cpu())
-            labels.append(label.cpu())
-
-    logits = torch.cat(logits).numpy()
-    labels = torch.cat(labels).numpy()
-
-    save_path = Path(save_dir) / model_name / f"predictions_{set_name}.npy"
+    save_path = Path(save_dir) / model_name / f"predictions/predictions_{set_name}.npy"
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(save_path, logits)
+    if not os.path.exists(save_path):
+        model.to(device).eval()
+        logits, labels = [], []
+
+        with torch.no_grad():
+            for data, label in dataloader:
+                data, label = data.to(device), label.to(device)
+                logits.append(model(data).cpu())
+                labels.append(label.cpu())
+
+        logits = torch.cat(logits).numpy()
+        labels = torch.cat(labels).numpy()
+
+        np.save(save_path, logits)
+    else:
+        logits = np.load(save_path)
+        labels = []
+
+        for _, label in dataloader:
+            labels.append(label.cpu())
+        labels = torch.cat(labels).numpy()
 
     return logits, labels
 
