@@ -23,9 +23,6 @@ class TensorDataset(Dataset):
         x = self.features[idx]
         y = self.labels[idx]
 
-        if self.transform:
-            x = self.transform(x)
-        return x, y
 
 
 def dataloader(path: str, minibatch_size: int, dataset=None):
