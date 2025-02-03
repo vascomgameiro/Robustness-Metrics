@@ -1,7 +1,7 @@
 import torch
 import os
 import torchattacks
-from src.data_loader import dataloader
+from data_loader import dataloader
 from model_constructor import models_iterator
 from attack_acc import all_attacks
 from utils import (
@@ -11,11 +11,10 @@ from utils import (
     load_logits_and_labels_attacks,
     calculate_metric_differences,
 )
-import src.measures_performance as measures_performance
+import measures_performance as measures_performance
+from dotenv import load_dotenv
 import measures_norm
 import measures_sharpness
-from dotenv import load_dotenv
-
 
 depths = [2, 4]
 filters_sizes = {
@@ -47,15 +46,14 @@ def main():
 
     load_dotenv()
     DATA_DIR = os.getenv("DATA_DIR")
-    train_loader, val_loader, test_loader_cifar = dataloader(
-        path=DATA_DIR, batch_size=32, dataset="cifar10"
-    )
+    SHIFTED_DIR = os.getenv("SHIFTED_DIR")
+    train_loader, val_loader, test_loader_cifar = dataloader(path=DATA_DIR, batch_size=32)
 
     images, ys = next(iter(train_loader))
     img_dim = images.shape[2]  # assuming square dimensions
     nchannels = images.shape[1]
 
-    for config in models_to_train:
+    for config in models_to_train[-3:]:
         # 2 - train model, save it and the logits
 
         model = config["model"]
@@ -64,18 +62,18 @@ def main():
         path_to_measures = os.path.join(path_to_model, "measures")
         path_to_attacks = os.path.join(path_to_model, "attacks")
 
-        untrained, model = train_save_model(config, device, train_loader, val_loader, test_loader_cifar)
+        untrained, model = train_save_model(config, device, train_loader, val_loader)
 
         # 3 - attack dataset, make prediction and save logits
         all_attacks(model, test_loader_cifar, attacks_to_test, model_name, path_to_attacks)
 
-        # Get the logits for all datasets
-        test_loader_101 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10.1")
-        test_loader_10c1 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10c1")
-        test_loader_10c2 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10c2")
-        test_loader_10c3 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10c3")
-        test_loader_10c4 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10c4")
-        test_loader_10c5 = dataloader(path=DATA_DIR, batch_size=32, dataset="cifar10c5")
+        # Get the logits for all dataset
+        test_loader_101 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10.1")
+        test_loader_10c1 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10c1")
+        test_loader_10c2 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10c2")
+        test_loader_10c3 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10c3")
+        test_loader_10c4 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10c4")
+        test_loader_10c5 = dataloader(path=SHIFTED_DIR, batch_size=32, dataset="cifar10c5")
 
         logits_train, labels_train = get_logits_and_labels(train_loader, model, model_name, "train", device)
         logits_val, labels_val = get_logits_and_labels(val_loader, model, model_name, "val", device)
@@ -157,7 +155,7 @@ def main():
         )
         for name in compare_against_test:
             complex_diff[f"complexity_diff_{name}"] = calculate_metric_differences(
-                complex_metrics["test"], complex_metrics[name]
+                complex_metrics["complexity_test"], complex_metrics[f"complexity_{name}"]
             )
         print_save_measures(
             complex_metrics,

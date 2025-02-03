@@ -144,56 +144,38 @@ def normalize_perturbed_weights(
             total_squared_diff += torch.sum(diff**2).item()
 
     l2_norm = total_squared_diff**0.5
-    print(f"Weights Norm before normalzing {l2_norm}")
     if l2_norm > sigma:
         scaling_factor = sigma / l2_norm
         with torch.no_grad():
             for param_orig, param_pert in zip(unperturbed_model.parameters(), perturbed_model.parameters()):
                 scaled_diff = (param_pert - param_orig) * scaling_factor
                 param_pert.copy_(param_orig + scaled_diff)
-        # Verify norm after normalizing
-        total_squared_diff = 0.0
-        with torch.no_grad():
-            for param_orig, param_pert in zip(unperturbed_model.parameters(), perturbed_model.parameters()):
-                diff = param_pert - param_orig
-                total_squared_diff += torch.sum(diff**2).item()
-
-        print(f"Weights Norm after normalzing {total_squared_diff**0.5}")
 
 
-def gradient_ascent_one_step(
-    model: nn.Module,
-    dataloader: DataLoader,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
-) -> float:
+def gradient_ascent_one_epoch(
+    model: nn.Module, dataloader: DataLoader, optimizer: torch.optim.Optimizer, device: torch.device
+) -> None:
     """
-    Perform one gradient ascent step using multiple randomly selected batches.
+    Performs gradient ascent on each batch in the dataloader for one full epoch.
 
-    Parameters:
-    - model: The PyTorch model to be updated.
-    - dataloader: DataLoader providing the dataset.
-    - optimizer: Optimizer for updating the model parameters.
-    - device: The device (CPU/GPU) to perform computations on.
-    - num_batches: Number of batches to process in this ascent step.
-
-    Returns:
-    - average_loss: The average loss over the selected batches.
+    Args:
+        model: The neural network model to train.
+        dataloader: A DataLoader providing batches of (data, target).
+        optimizer: A PyTorch optimizer for updating model parameters.
+        device: The PyTorch device (e.g., 'cpu' or 'cuda').
     """
     model.train()
-    data_iter = iter(dataloader)
-    data, target = next(data_iter)
-    data, target = data.to(device), target.to(device)
+    for data, target in dataloader:
+        data, target = data.to(device), target.to(device)
 
-    # Forward pass
-    output = model(data)
-    loss = nn.functional.cross_entropy(output, target)
+        # Forward pass
+        output = model(data)
+        loss = nn.functional.cross_entropy(output, target)
 
-    optimizer.zero_grad()
-    (-loss).backward()
-    optimizer.step()
-
-    return model
+        # Gradient ascent (maximize the loss)
+        optimizer.zero_grad()
+        (-loss).backward()
+        optimizer.step()
 
 
 def sharpness_sigma_search(
@@ -216,21 +198,16 @@ def sharpness_sigma_search(
     model.to(device)
 
     original_weights = [param.detach().clone() for param in model.parameters()]
-    print(f"Accuracy: {accuracy}")
     for sd in range(search_depth):
         sigma = (lower + upper) / 2.0
         min_accuracy = float("inf")
-        print(f"Search depth {sd}, sigma: {sigma}")
-
         for mt in range(monte_carlo_iter):
-            print(f"Monte Carlo iteration {mt}")
             # original_model = deepcopy(model)
 
             with apply_perturbation(model, sigma, noise_type=noise_type):
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
                 for step in range(ascent_steps):
-                    print(f"Step: {step}")
-                    gradient_ascent_one_step(model, dataloader, optimizer, device)
+                    gradient_ascent_one_epoch(model, dataloader, optimizer, device)
                     clip_perturbed_weights(model, sigma, original_weights)
                     # if noise_type == "uniform_magnitude_aware":
                     #     clip_perturbed_weights(model, sigma, original_weights)
@@ -248,12 +225,15 @@ def sharpness_sigma_search(
                 min_accuracy = min(min_accuracy, perturbed_accuracy)
 
         deviation = abs(min_accuracy - accuracy)
+        deviation = abs(min_accuracy - accuracy)
         if abs(deviation - target_deviation) < deviation_tolerance or (upper - lower) < bound_tolerance:
+            print("Breaking condition met.")
             break
         elif deviation > target_deviation:
             upper = sigma
         else:
             lower = sigma
+        print(f"Deviation: {deviation}  |  upper: {upper} |  lower: {lower}")
     return sigma
 
 
@@ -345,6 +325,7 @@ def calculate_pac_bayes_metrics(
         deviation_tolerance=1e-2,
         bound_tolerance=1e-3,
         search_depth=50,
+        monte_carlo_iter=5,
     )
     print("Starting Mag_sigma search")
     mag_sigma = pac_bayes_sigma_search(
@@ -359,6 +340,7 @@ def calculate_pac_bayes_metrics(
         deviation_tolerance=1e-2,
         bound_tolerance=1e-5,
         search_depth=50,
+        monte_carlo_iter=5,
     )
 
     distance_vector = calculate_distance_vector(model, init_model)
@@ -404,7 +386,7 @@ def calculate_sharpness_metrics(
         upper=1.0,
         lower=0.0,
         deviation_tolerance=1e-2,
-        bound_tolerance=1e-5,
+        bound_tolerance=1e-4,
         learning_rate=lr,
         ascent_steps=20,
         monte_carlo_iter=5,
@@ -421,7 +403,7 @@ def calculate_sharpness_metrics(
         upper=1.0,
         lower=0.0,
         deviation_tolerance=1e-2,
-        bound_tolerance=1e-5,
+        bound_tolerance=1e-4,
         learning_rate=lr,
         ascent_steps=20,
         monte_carlo_iter=5,

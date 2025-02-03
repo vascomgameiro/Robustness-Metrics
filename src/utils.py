@@ -110,7 +110,7 @@ def get_logits_and_labels(
 
 
 def load_logits_and_labels_attacks(
-    model_name: str, set_name: str, save_dir: str = "attacks"
+    attack_name: str, model_name: str, save_dir: str = "attacks"
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Load logits and labels as NumPy arrays from a saved file.
@@ -123,10 +123,7 @@ def load_logits_and_labels_attacks(
     Returns:
         tuple[np.ndarray, np.ndarray]: Logits and labels as NumPy arrays.
     """
-    save_path = Path(save_dir) / model_name / f"predictions_{set_name}.pt"
-    if not save_path.exists():
-        raise FileNotFoundError(f"File not found: {save_path}")
-
+    save_path = f"{save_dir}/{attack_name} attack_logits_labels.pth"
     data = torch.load(save_path)
     logits = data["logits"].numpy()
     labels = data["labels"].numpy()
@@ -150,9 +147,9 @@ def calculate_metric_differences(complex_cifar, complex_val):
         train_metric = complex_cifar[metric_name]
         val_metric = complex_val[metric_name]
 
-        abs_diff = abs(train_metric - val_metric)
-        prop_diff = abs(train_metric - val_metric) / train_metric if train_metric != 0 else float("inf")
-        elasticity = abs(train_metric - val_metric) / ((val_metric + train_metric) / 2)
+        abs_diff = train_metric - val_metric
+        prop_diff = (train_metric - val_metric) / train_metric if train_metric != 0 else float("inf")
+        elasticity = (train_metric - val_metric) / ((val_metric + train_metric) / 2)
 
         differences[metric_name] = {
             "absolute_difference": abs_diff,

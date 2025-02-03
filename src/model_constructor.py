@@ -19,7 +19,7 @@ class CNN(nn.Module):
         self.optim = optim
         self.name = f"{conv_layers.name}{fc_layers.name}_lr{safe_lr}_{optim}"
 
-    def forward(self, input):  # input will be of form (Batch size, 3, 64, 64)
+    def forward(self, input):  # input will be of form (Batch size, 3, 32, 32)
         # conv layers
 
         input = self.conv_layers(input)
@@ -117,6 +117,71 @@ class FC:
         self.layers.append(nn.Linear(in_features=in_features, out_features=num_classes))
 
 
+class VGG(nn.Module):
+    """
+    Constructor receives: layer objects and num_classes. can be conv layer or fc layer.
+    Each is defined below and has multiple options for architecture.
+    """
+
+    def __init__(self, num_classes, drop):
+        super(VGG, self).__init__()
+
+        self.conv_layers = nn.Sequential(
+            nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(64),
+                nn.ReLU(),
+                nn.Conv2d(64, 64, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(64),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                nn.Dropout(drop),
+                nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+                nn.Conv2d(128, 128, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                nn.Dropout(drop),
+                nn.Conv2d(128, 256, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(256),
+                nn.ReLU(),
+                nn.Conv2d(256, 256, kernel_size=(3, 3), stride=1, padding="same"),
+                nn.BatchNorm2d(256),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+                nn.Dropout(drop),
+                nn.AvgPool2d(kernel_size=2, stride=2, padding=0),
+            )
+        )
+
+        self.fc_layers = nn.Sequential(nn.Linear(1024, 512), nn.ReLU(), nn.Linear(512, num_classes))
+        self.num_classes = num_classes
+
+    def forward(self, input):  # input will be of form (Batch size, 3, 32, 32)
+        input = self.conv_layers(input)
+        input = input.reshape(((input.shape[0], input.shape[1] * input.shape[2] * input.shape[3])))
+        input = self.fc_layers(input)
+
+        return input
+
+
+def vgg_iterator(lrs, optimizers):
+    models_vgg = []
+    for lr in lrs:
+        for optimizer in optimizers:
+            model_name = f"vgg_cifar_{lr}_{optimizer}"
+            model_info = {
+                "name": model_name,
+                "model": VGG(10, 0.5),
+                "params": {"lr": lr, "optimizer": optimizer},
+            }
+            models_vgg.append(model_info)
+
+    return models_vgg
+
+
 def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
     models_to_train = []
     for depth in depths:
@@ -156,6 +221,8 @@ def models_iterator(depths, filters_sizes, optimizers, drops, lrs):
 
             models_to_train.append(model_info)
 
+    models_vgg = vgg_iterator(lrs, optimizers)
+    models_to_train += models_vgg
     print(f"list of {len(models_to_train)} models generated!!")
 
     return models_to_train

@@ -199,7 +199,7 @@ def calculate_generalization_bounds(
     """
 
     margin = calculate_margin(trained_model, device, train_loader)
-    print("*************************")
+
     print(f"Margin: {margin}")
     model = copy.deepcopy(trained_model)
     init_model = copy.deepcopy(init_model)
@@ -225,7 +225,8 @@ def calculate_generalization_bounds(
             "measure_func": calculate_norm,
             "operator": "product",
         }
-
+        measures["Margin"] = margin
+        measures["1 / Margin"] = 1 / margin
         measures["L_{1,inf} norm"] = calculate_measure(**norm_settings, kwargs={"p": 1, "q": np.inf})  # l=2
         measures["Frobenius norm"] = calculate_measure(**norm_settings, kwargs={"p": 2, "q": 2})  # l=2
         # measures["L_{3,1.5} norm"] = calculate_measure(**norm_settings, kwargs={"p": 3, "q": 1.5})
