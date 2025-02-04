@@ -7,7 +7,6 @@ This repository contains the code and final report for the project *Benchmarking
 ```
 Robustness-Metrics/
 ├── data/                     # Contains processed data and results
-│   ├── processed/            # Preprocessed datasets
 │   └── results/              # Metrics calculated for different models
 │       ├── norms.csv         # Norm metrics
 │       ├── ood_performance.csv # Out-of-distribution performance metrics
@@ -15,13 +14,13 @@ Robustness-Metrics/
 │       ├── proportional_performance.csv # Proportional performance metrics
 │       ├── sharpness.csv     # Sharpness metrics
 │       └── train_val_gap.csv # Training and validation gap metrics
-├── models/                   # Trained deep learning models
 ├── notebooks/                # Jupyter notebooks for analysis and visualization
 │   └── results_analysis.ipynb # Analysis of robustness metrics
 ├── references/               # Reference materials and related literature
 ├── reports/                  # Final report
 │   ├── figures/              # Figures used in the report
 │   └── AECD_Benchmark_Robustness_Metrics_Report.pdf
+│   └── AECD_Benchmark_Robustness_Metrics_Presentation.pdf
 ├── src/                      # Source code for training, evaluation, and metric computation
 │   ├── data_loader.py        # Data loading and preprocessing
 │   ├── process_data.py       # Data processing scripts
