@@ -1,7 +1,7 @@
 # Robustness Metrics Benchmarking
 
 ## Overview
-This repository contains the code, final report, and presentation for the project *Benchmarking Robustness Measures*, which evaluates various robustness metrics in deep learning models. The primary focus of the project is to explore the relationship between model generalization, uncertainty, and robustness metrics under different out-of-distribution scenarios.
+This repository contains the code and final report for the project *Benchmarking Robustness Measures*, which evaluates various robustness metrics in deep learning models. The primary focus of the project is to explore the relationship between model generalization, uncertainty, and robustness metrics under different out-of-distribution scenarios.
 
 ## Project Structure
 ```
@@ -19,7 +19,7 @@ Robustness-Metrics/
 ├── notebooks/                # Jupyter notebooks for analysis and visualization
 │   └── results_analysis.ipynb # Analysis of robustness metrics
 ├── references/               # Reference materials and related literature
-├── reports/                  # Final report and presentation
+├── reports/                  # Final report
 │   ├── figures/              # Figures used in the report
 │   └── AECD_Benchmark_Robustness_Metrics_Report.pdf
 ├── src/                      # Source code for training, evaluation, and metric computation
@@ -42,7 +42,7 @@ Robustness-Metrics/
 ```
 
 ## Highlights
-- **Reports:** The final report and presentation summarizing the findings are located in the `reports/` folder.
+- **Reports:** The final report summarizing the findings is located in the `reports/` folder.
 - **Data:** The `data/` folder contains processed data and results, including metrics for different models.
 - **Results:** The `results/` subfolder provides detailed metrics such as norms, sharpness, performance gaps, and out-of-distribution performance.
 
