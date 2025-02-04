@@ -1,79 +1,63 @@
-# Data Project Template
+# Robustness Metrics Benchmarking
 
-<a target="_blank" href="https://datalumina.com/">
-    <img src="https://img.shields.io/badge/Datalumina-Project%20Template-2856f7" alt="Datalumina Project" />
-</a>
+## Overview
+This repository contains the code and final report for the project *Benchmarking Robustness Measures*, which evaluates various robustness metrics in deep learning models. The primary focus of the project is to explore the relationship between model generalization, uncertainty, and robustness metrics under different out-of-distribution scenarios.
 
-## Cookiecutter Data Science
-This project template is a simplified version of the [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org) template, created to suit the needs of Datalumina and made available as a GitHub template.
-
-## Adjusting .gitignore
-
-Ensure you adjust the `.gitignore` file according to your project needs. For example, since this is a template, the `/data/` folder is commented out and data will not be exlucded from source control:
-
-```plaintext
-# exclude data from source control by default
-# /data/
+## Project Structure
+```
+Robustness-Metrics/
+├── data/                     # Contains processed data and results
+│   ├── processed/            # Preprocessed datasets
+│   └── results/              # Metrics calculated for different models
+│       ├── norms.csv         # Norm metrics
+│       ├── ood_performance.csv # Out-of-distribution performance metrics
+│       ├── performance_gap.csv # Performance gap metrics
+│       ├── proportional_performance.csv # Proportional performance metrics
+│       ├── sharpness.csv     # Sharpness metrics
+│       └── train_val_gap.csv # Training and validation gap metrics
+├── models/                   # Trained deep learning models
+├── notebooks/                # Jupyter notebooks for analysis and visualization
+│   └── results_analysis.ipynb # Analysis of robustness metrics
+├── references/               # Reference materials and related literature
+├── reports/                  # Final report
+│   ├── figures/              # Figures used in the report
+│   └── AECD_Benchmark_Robustness_Metrics_Report.pdf
+├── src/                      # Source code for training, evaluation, and metric computation
+│   ├── data_loader.py        # Data loading and preprocessing
+│   ├── process_data.py       # Data processing scripts
+│   ├── make_cifar_c.py       # CIFAR-C generation script
+│   ├── model_constructor.py  # Model architectures and definitions
+│   ├── pytorch_trainer.py    # Training pipeline
+│   ├── attack_acc.py         # Implementation of adversarial attacks
+│   ├── measures_norm.py      # Norm metrics computation
+│   ├── measures_performance.py # Performance metrics computation
+│   ├── measures_sharpness.py # Sharpness metrics computation
+│   ├── load_results.py       # Results loading scripts
+│   ├── visualization.py      # Visualization utilities
+│   └── utils.py              # General utilities
+├── .gitignore                # Git ignore file
+├── LICENCE                   # License information
+├── README.md                 # Project overview and instructions
+└── requirements.txt          # Required dependencies
 ```
 
-Typically, you want to exclude this folder if it contains either sensitive data that you do not want to add to version control or large files.
+## Highlights
+- **Reports:** The final report summarizing the findings is located in the `reports/` folder.
+- **Data:** The `data/` folder contains processed data and results, including metrics for different models.
+- **Results:** The `results/` subfolder provides detailed metrics such as norms, sharpness, performance gaps, and out-of-distribution performance.
 
-## Duplicating the .env File
-To set up your environment variables, you need to duplicate the `.env.example` file and rename it to `.env`. You can do this manually or using the following terminal command:
+## Metrics and Evaluation
+We calculated and analyzed multiple metrics to benchmark model robustness:
 
-```bash
-cp .env.example .env # Linux, macOS, Git Bash, WSL
-copy .env.example .env # Windows Command Prompt
-```
+1. **Norm Metrics:** Measures related to model weights and their interactions.
+2. **Performance Metrics:** Standard measures like accuracy and F1-score.
+3. **Sharpness Metrics:** Metrics evaluating the sensitivity of the loss landscape.
+4. **Out-of-Distribution Performance:** Metrics comparing in-distribution and out-of-distribution results.
 
-This command creates a copy of `.env.example` and names it `.env`, allowing you to configure your environment variables specific to your setup.
+The results from these metrics are summarized in the `results/` folder as CSV files, facilitating further analysis and visualization.
 
+## References
+For more details on the methodology and findings, refer to the final report located in the `reports/` folder.
 
-## Project Organization
-
-```
-├── LICENSE            <- Open-source license if one is chosen
-├── README.md          <- The top-level README for developers using this project
-├── data
-│   ├── external       <- Data from third party sources
-│   ├── interim        <- Intermediate data that has been transformed
-│   ├── processed      <- The final, canonical data sets for modeling
-│   └── raw            <- The original, immutable data dump
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-└── src                         <- Source code for this project
-    │
-    ├── __init__.py             <- Makes src a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    │    
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
-    │   └── train.py            <- Code to train models
-    │
-    ├── plots.py                <- Code to create visualizations 
-    │
-    └── services                <- Service classes to connect with external platforms, tools, or APIs
-        └── __init__.py 
-```
-
---------
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
